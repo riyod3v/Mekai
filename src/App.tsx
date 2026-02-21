@@ -8,8 +8,6 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { FullPageLoader } from '@/components/LoadingSpinner';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { SetupScreen } from '@/components/SetupScreen';
 
 import AuthPage from '@/pages/Auth';
 import ReaderDashboard from '@/pages/ReaderDashboard';
@@ -122,11 +120,6 @@ function AppRoutes() {
 }
 
 export default function App() {
-  // Show a friendly setup screen when Supabase isn't configured yet
-  if (!isSupabaseConfigured) {
-    return <SetupScreen />;
-  }
-
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

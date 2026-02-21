@@ -54,43 +54,39 @@ function friendlyAuthError(err: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-// ─── Error Modal ──────────────────────────────────────────────────────────────
+// ─── Error Modal ─────────────────────────────────────────────────────────────
 
 function ErrorModal({
   open,
-  title = 'Error',
   items,
   onClose,
 }: {
   open: boolean;
-  title?: string;
   items: string[];
   onClose: () => void;
 }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-slate-900 text-slate-100 shadow-xl">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-          <div className="text-sm font-semibold">{title}</div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200" aria-label="Close">
-            ✕
-          </button>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 text-slate-100 shadow-2xl">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+          <span className="text-sm font-semibold">Error</span>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors" aria-label="Close">✕</button>
         </div>
-        <div className="px-4 py-4">
-          <ul className="space-y-2 text-sm">
+        <div className="px-5 py-4">
+          <ul className="space-y-2">
             {items.map((it) => (
-              <li key={it} className="flex gap-2">
-                <span className="text-red-400">•</span>
+              <li key={it} className="flex items-start gap-2 text-sm">
+                <span className="text-red-400 mt-0.5">•</span>
                 <span>{it}</span>
               </li>
             ))}
           </ul>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-5 flex justify-end">
             <button
               onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white mekai-primary-bg"
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-white mekai-primary-bg hover:opacity-90 transition-opacity"
             >
               OK
             </button>
@@ -117,10 +113,6 @@ export default function AuthPage() {
   const [role, setRole] = useState<'reader' | 'translator'>('reader');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Validation state
-  const [touched, setTouched] = useState({ username: false, email: false, password: false });
-  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItems, setModalItems] = useState<string[]>([]);
 
@@ -139,44 +131,35 @@ export default function AuthPage() {
 
   function switchTab(t: Tab) {
     setTab(t);
-    setSubmitAttempted(false);
-    setTouched({ username: false, email: false, password: false });
     setModalOpen(false);
   }
 
-  function validateForm(): string[] {
-    const errors: string[] = [];
+  function validateFields(): boolean {
+    const errs: string[] = [];
     if (isSignup) {
-      if (!username.trim()) errors.push('Username is required.');
-      else if (username.trim().length < 3) errors.push('Username must be at least 3 characters.');
+      if (!username.trim()) errs.push('Username is required.');
+      else if (username.trim().length < 3) errs.push('Username must be at least 3 characters.');
     }
-    if (!email.trim()) errors.push('Email is required.');
-    else if (!isValidEmail(email)) errors.push('Email format looks invalid.');
-    if (!password) errors.push('Password is required.');
-    else if (isSignup) errors.push(...getPasswordIssues(password));
-    return errors;
+    if (!email.trim()) errs.push('Email is required.');
+    else if (!isValidEmail(email)) errs.push('Email format looks invalid.');
+    if (!password) errs.push('Password is required.');
+    else if (isSignup) errs.push(...getPasswordIssues(password));
+    if (errs.length) { setModalItems(errs); setModalOpen(true); return false; }
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitAttempted(true);
-
-    const errors = validateForm();
-    if (errors.length) {
-      setModalItems(errors);
-      setModalOpen(true);
-      return;
-    }
+    if (submitting) return;
+    if (!validateFields()) return;
 
     setSubmitting(true);
     try {
       if (tab === 'login') {
         await signIn(email, password);
-        // session change picked up by useAuth → redirect to '/' fires
       } else {
         await signUp(email, password, username.trim(), role as 'reader' | 'translator');
         toast.success('Account created! Signing you in…');
-        // session created immediately → redirect to '/' fires
       }
     } catch (err: unknown) {
       setModalItems([friendlyAuthError(err)]);
@@ -186,7 +169,7 @@ export default function AuthPage() {
     }
   }
 
-  const showPwFeedback = isSignup && (password.length > 0 || submitAttempted);
+  const showPwFeedback = isSignup && password.length > 0;
 
   if (loading) {
     return (
@@ -251,7 +234,6 @@ export default function AuthPage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(sanitizeText(e.target.value))}
-                  onBlur={() => setTouched((t) => ({ ...t, username: true }))}
                   placeholder="Your name"
                   className={inputCls}
                 />
@@ -265,7 +247,6 @@ export default function AuthPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(sanitizeEmail(e.target.value))}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                 placeholder="you@example.com"
                 className={inputCls}
                 autoComplete="email"
@@ -280,7 +261,6 @@ export default function AuthPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, password: true }))}
                   placeholder="••••••••"
                   className={clsx(inputCls, 'pr-10')}
                   autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
@@ -294,25 +274,20 @@ export default function AuthPage() {
                 </button>
               </div>
 
-              {/* Real-time password feedback */}
               {showPwFeedback && (
-                <div className="mt-2 space-y-1">
+                <ul className="mt-2 space-y-1 pl-1">
                   {([
-                    { label: 'At least 8 characters', pass: password.length >= 8 },
-                    { label: 'One uppercase letter (A–Z)', pass: /[A-Z]/.test(password) },
-                    { label: 'One number (0–9)', pass: /[0-9]/.test(password) },
-                    { label: 'One special character (!@#…)', pass: /[^A-Za-z0-9]/.test(password) },
-                  ] as { label: string; pass: boolean }[]).map(({ label, pass }) => (
-                    <div key={label} className="flex items-center gap-2">
-                      <span className={pass ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'}>
-                        {pass ? '✓' : '✗'}
-                      </span>
-                      <span className={`text-xs ${pass ? 'text-slate-500 dark:text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                        {label}
-                      </span>
-                    </div>
+                    { label: 'At least 8 characters', ok: password.length >= 8 },
+                    { label: 'Uppercase letter', ok: /[A-Z]/.test(password) },
+                    { label: 'Number', ok: /[0-9]/.test(password) },
+                    { label: 'Special character (!@#$…)', ok: /[^A-Za-z0-9]/.test(password) },
+                  ] as { label: string; ok: boolean }[]).map(({ label, ok }) => (
+                    <li key={label} className={`flex items-center gap-2 text-xs ${ok ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                      <span className="text-base leading-none">{ok ? '✓' : '○'}</span>
+                      {label}
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </div>
 
@@ -363,14 +338,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Validation / generic error modal */}
-      <ErrorModal
-        open={modalOpen}
-        items={modalItems}
-        onClose={() => setModalOpen(false)}
-      />
-
-
+      <ErrorModal open={modalOpen} items={modalItems} onClose={() => setModalOpen(false)} />
     </div>
   );
 }

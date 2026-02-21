@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Clock, Upload, ArrowLeft, Hash } from 'lucide-react';
+import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, ImageIcon, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { fetchMangaById } from '@/services/manga';
+import { fetchMangaById, updateManga, deleteManga } from '@/services/manga';
+import { deleteMangaCover } from '@/services/storageCovers';
 import { fetchChaptersByManga, uploadChapter } from '@/services/chapters';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorState } from '@/components/ErrorState';
@@ -22,7 +23,20 @@ export default function MangaEntryPage() {
   const { user } = useAuth();
   const { isTranslator } = useRole();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [showChapterModal, setShowChapterModal] = useState(false);
+
+  // Edit state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
+  const [editCoverPreview, setEditCoverPreview] = useState<string | null>(null);
+  const [removeCover, setRemoveCover] = useState(false);
+  const editCoverRef = useRef<HTMLInputElement>(null);
+
+  // Delete state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const {
     data: manga,
@@ -54,8 +68,70 @@ export default function MangaEntryPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const isOwner = !!user && manga?.owner_id === user.id;
   const canUploadChapter =
-    isTranslator && manga?.owner_id === user?.id && manga?.visibility === 'shared';
+    isTranslator && isOwner && manga?.visibility === 'shared';
+
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: () =>
+      updateManga(
+        manga!.id,
+        {
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          ...(removeCover ? { cover_url: null } : {}),
+        },
+        manga!.owner_id,
+        editCoverFile ?? undefined
+      ),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['manga', id], updated);
+      queryClient.invalidateQueries({ queryKey: ['manga', id] });
+      setShowEditModal(false);
+      setEditCoverFile(null);
+      setEditCoverPreview(null);
+      setRemoveCover(false);
+      toast.success('Manga updated!');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await deleteManga(manga!.id);
+      await deleteMangaCover({ userId: manga!.owner_id, mangaId: manga!.id });
+    },
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['manga', id] });
+      // Invalidate only the list-level queries, not the specific entry
+      queryClient.invalidateQueries({ queryKey: ['manga', 'shared'] });
+      queryClient.invalidateQueries({ queryKey: ['manga', 'owned'] });
+      queryClient.invalidateQueries({ queryKey: ['manga', 'private'] });
+      toast.success('Manga deleted.');
+      navigate(isTranslator ? '/translator' : '/reader');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  function openEditModal() {
+    if (!manga) return;
+    setEditTitle(manga.title);
+    setEditDescription(manga.description ?? '');
+    setEditCoverFile(null);
+    setEditCoverPreview(null);
+    setRemoveCover(false);
+    setShowEditModal(true);
+  }
+
+  function handleEditCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setEditCoverFile(file);
+    setRemoveCover(false);
+    if (file) setEditCoverPreview(URL.createObjectURL(file));
+    else setEditCoverPreview(null);
+  }
 
   if (mangaLoading) {
     return (
@@ -102,11 +178,6 @@ export default function MangaEntryPage() {
 
         {/* Metadata */}
         <div className="flex flex-col gap-3">
-          {manga.visibility === 'private' && (
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 w-fit font-medium">
-              Private
-            </span>
-          )}
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
             {manga.title}
           </h1>
@@ -122,21 +193,46 @@ export default function MangaEntryPage() {
               <Clock className="h-3 w-3" />
               Updated {formatDate(manga.updated_at)}
             </span>
-            <span className="flex items-center gap-1">
-              <BookOpen className="h-3 w-3" />
-              {manga.visibility === 'shared' ? 'Shared Library' : 'Private'}
-            </span>
+            {manga.visibility === 'private' ? (
+              <span className="px-1.5 py-0.5 rounded-md bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 font-semibold tracking-wide">
+                Private
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded-md bg-indigo-400/20 text-indigo-300 border border-indigo-400/40 font-semibold tracking-wide">
+                Shared
+              </span>
+            )}
           </div>
 
-          {canUploadChapter && (
-            <button
-              onClick={() => setShowChapterModal(true)}
-              className="mt-2 flex items-center gap-2 w-fit px-4 py-2 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
-            >
-              <Upload className="h-4 w-4" />
-              Upload / Update Chapter
-            </button>
-          )}
+          <div className="flex flex-wrap gap-2 mt-2">
+            {canUploadChapter && (
+              <button
+                onClick={() => setShowChapterModal(true)}
+                className="flex items-center gap-2 w-fit px-4 py-2 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
+              >
+                <Upload className="h-4 w-4" />
+                Upload / Update Chapter
+              </button>
+            )}
+            {isOwner && (
+              <>
+                <button
+                  onClick={openEditModal}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-800 dark:text-gray-200 text-sm font-medium transition-colors"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-sm font-medium transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -207,6 +303,107 @@ export default function MangaEntryPage() {
           onSubmit={(data) => uploadChapterMutation.mutateAsync(data)}
           submitLabel="Upload Chapter"
         />
+      </Modal>
+
+      {/* Edit Manga Modal */}
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Manga"
+      >
+        <form
+          onSubmit={(e) => { e.preventDefault(); editMutation.mutate(); }}
+          className="flex flex-col gap-4"
+        >
+          {/* Cover preview / picker */}
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 w-24 aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center">
+              {removeCover ? (
+                <span className="text-xs text-slate-400 dark:text-gray-500 text-center p-2">No cover</span>
+              ) : editCoverPreview ? (
+                <img src={editCoverPreview} alt="New cover" className="w-full h-full object-cover" />
+              ) : manga?.cover_url ? (
+                <img src={manga.cover_url} alt="Current cover" className="w-full h-full object-cover" />
+              ) : (
+                <ImageIcon className="h-6 w-6 text-slate-400 dark:text-gray-600" />
+              )}
+            </div>
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => editCoverRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-gray-300 transition-colors"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {editCoverFile ? 'Change' : 'Upload new cover'}
+              </button>
+              {(manga?.cover_url || editCoverFile) && !removeCover && (
+                <button
+                  type="button"
+                  onClick={() => { setEditCoverFile(null); setEditCoverPreview(null); setRemoveCover(true); if (editCoverRef.current) editCoverRef.current.value = ''; }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Remove cover
+                </button>
+              )}
+              <input ref={editCoverRef} type="file" accept="image/*" onChange={handleEditCoverChange} className="hidden" />
+            </div>
+          </div>
+
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            placeholder="Manga Title *"
+            required
+            className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+          />
+          <textarea
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+            placeholder="Description (optional)"
+            rows={3}
+            className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+          />
+          <button
+            type="submit"
+            disabled={editMutation.isPending || !editTitle.trim()}
+            className="w-full py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 disabled:opacity-60 text-white font-medium text-sm transition-opacity"
+          >
+            {editMutation.isPending ? 'Saving…' : 'Save Changes'}
+          </button>
+        </form>
+      </Modal>
+
+      {/* Delete Confirm Dialog */}
+      <Modal
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Manga"
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-slate-600 dark:text-gray-400">
+            Are you sure you want to delete{' '}
+            <span className="font-semibold text-slate-900 dark:text-white">{manga?.title}</span>?
+            This will permanently remove the manga and its cover image. Chapters are not deleted.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-4 py-2 rounded-xl text-sm font-medium bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white transition-colors"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

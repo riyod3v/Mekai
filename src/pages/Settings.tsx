@@ -180,6 +180,7 @@ export default function SettingsPage() {
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
+    if (savingPw) return;
 
     const issues = getPwIssues(newPw);
     const errors = {
@@ -239,7 +240,7 @@ export default function SettingsPage() {
             </svg>
           </button>
           <div>
-            <h1 className="text-2xl font-bold leading-tight">Settings</h1>
+            <h1 className="text-2xl font-bold leading-tight">Profile Settings</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">Manage your profile and account security</p>
           </div>
         </div>

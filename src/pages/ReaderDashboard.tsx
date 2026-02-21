@@ -12,7 +12,6 @@ import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
 import { Modal } from '@/components/Modal';
 import { MangaUploadForm } from '@/components/MangaUploadForm';
-import type { MangaFormData } from '@/types';
 
 type Tab = 'shared' | 'private';
 
@@ -51,7 +50,7 @@ export default function ReaderDashboard() {
 
   // Upload private manga mutation
   const uploadMutation = useMutation({
-    mutationFn: (formData: MangaFormData) => createManga(formData, user!.id),
+    mutationFn: (formData: Parameters<typeof createManga>[0]) => createManga(formData, user!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manga', 'private'] });
       setShowUploadModal(false);
@@ -90,7 +89,7 @@ export default function ReaderDashboard() {
       {/* Tabs */}
       <div className="flex gap-1 mb-6 glass rounded-xl p-1 w-fit">
         {([
-          { id: 'shared', label: 'Shared Library', icon: Library },
+          { id: 'shared', label: 'Online Library', icon: Library },
           { id: 'private', label: 'My Private Uploads', icon: FolderLock },
         ] as { id: Tab; label: string; icon: React.FC<{ className?: string }> }[]).map(({ id, label, icon: Icon }) => (
           <button
@@ -130,12 +129,12 @@ export default function ReaderDashboard() {
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={search ? 'No results found' : tab === 'shared' ? 'No shared manga yet' : 'No private manga yet'}
+          title={search ? 'No results found' : tab === 'shared' ? 'No published manga yet' : 'No private manga yet'}
           message={
             search
               ? 'Try a different search term.'
               : tab === 'shared'
-              ? 'Nothing in the shared library yet. Check back later!'
+              ? 'Nothing in the online library yet. Check back later!'
               : 'Add your own private manga to read for yourself.'
           }
           action={
@@ -159,7 +158,6 @@ export default function ReaderDashboard() {
         title="Add Private Manga"
       >
         <MangaUploadForm
-          defaultVisibility="private"
           onSubmit={(data) => uploadMutation.mutateAsync(data)}
           submitLabel="Add to My Library"
         />

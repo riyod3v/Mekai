@@ -28,11 +28,6 @@ export function MangaCard({ manga, showVisibility }: Props) {
             (e.target as HTMLImageElement).src = PLACEHOLDER_COVER;
           }}
         />
-        {showVisibility && manga.visibility === 'private' && (
-          <span className="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-medium">
-            Private
-          </span>
-        )}
       </div>
 
       {/* Info */}
@@ -45,7 +40,17 @@ export function MangaCard({ manga, showVisibility }: Props) {
         )}
         <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
           <Clock className="h-3 w-3" />
-          {formatDistanceToNow(manga.updated_at)} ago
+          <span className="flex-1">{formatDistanceToNow(manga.updated_at)} ago</span>
+          {showVisibility && manga.visibility === 'private' && (
+            <span className="px-1.5 py-0.5 rounded-md bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 font-semibold tracking-wide">
+              Private
+            </span>
+          )}
+          {showVisibility && manga.visibility === 'shared' && (
+            <span className="px-1.5 py-0.5 rounded-md bg-indigo-400/20 text-indigo-300 border border-indigo-400/40 font-semibold tracking-wide">
+              Shared
+            </span>
+          )}
         </div>
       </div>
 

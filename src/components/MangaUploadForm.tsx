@@ -1,24 +1,23 @@
 import { useState } from 'react';
 import { Upload, ImageIcon } from 'lucide-react';
-import type { MangaFormData, Visibility } from '@/types';
+import { useRole } from '@/hooks/useRole';
+import type { MangaFormData } from '@/types';
 import clsx from 'clsx';
 
 interface Props {
   onSubmit: (data: MangaFormData) => Promise<unknown>;
-  defaultVisibility?: Visibility;
-  allowVisibilityChange?: boolean;
   submitLabel?: string;
 }
 
 export function MangaUploadForm({
   onSubmit,
-  defaultVisibility = 'shared',
-  allowVisibilityChange = false,
   submitLabel = 'Create Manga',
 }: Props) {
+  const { isTranslator } = useRole();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>(defaultVisibility);
+  // Auto-set based on role: translators share publicly, readers keep private
+  const visibility = isTranslator ? 'shared' : 'private';
   const [cover, setCover] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,6 +51,7 @@ export function MangaUploadForm({
       setLoading(false);
     }
   }
+
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -87,26 +87,6 @@ export function MangaUploadForm({
         className={clsx(inputCls, 'resize-none')}
       />
 
-      {/* Visibility */}
-      {allowVisibilityChange && (
-        <div className="flex gap-2">
-          {(['shared', 'private'] as Visibility[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setVisibility(v)}
-              className={clsx(
-                'flex-1 py-2 rounded-lg text-sm font-medium capitalize border transition-colors',
-                visibility === v
-                  ? 'mekai-primary-bg border-transparent text-white'
-                  : 'border-white/20 text-gray-400 hover:border-indigo-500/50'
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-      )}
 
       {error && <p className="text-red-400 text-xs">{error}</p>}
 

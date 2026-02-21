@@ -97,7 +97,7 @@ export default function TranslatorDashboard() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {myManga.map((manga) => (
               <div key={manga.id} onClick={() => setSelectedManga(manga)} className="cursor-pointer">
-                <MangaCard manga={manga} />
+                <MangaCard manga={manga} showVisibility />
               </div>
             ))}
           </div>
@@ -168,7 +168,6 @@ export default function TranslatorDashboard() {
         title="Create Shared Manga"
       >
         <MangaUploadForm
-          defaultVisibility="shared"
           onSubmit={(data) => createMangaMutation.mutateAsync(data)}
           submitLabel="Create & Share"
         />
