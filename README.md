@@ -27,7 +27,8 @@ Built with **React 19 + Vite 7 + TypeScript + Tailwind CSS v4 + Supabase** (Auth
 ```
 mekai/
 ├── supabase/
-│   └── schema.sql            # Full SQL schema + RLS policies
+│   ├── schema.sql            # Full SQL schema + RLS policies
+│   └── storage.sql           # Storage buckets + policies
 ├── src/
 │   ├── components/           # Reusable UI
 │   │   ├── ChapterUploadForm.tsx
@@ -61,6 +62,8 @@ mekai/
 │   ├── services/
 │   │   ├── chapters.ts
 │   │   ├── manga.ts
+│   │   ├── pages.ts
+│   │   ├── profiles.ts
 │   │   ├── translation.ts
 │   │   └── wordVault.ts
 │   ├── types/
@@ -95,7 +98,13 @@ Find both values in **Supabase Dashboard → Project Settings → API**.
 1. Open **Supabase Dashboard → SQL Editor**
 2. Paste and run the contents of `supabase/schema.sql`
 
-This creates all tables, RLS policies, storage buckets, realtime subscriptions, and triggers.
+This creates all tables, RLS policies, realtime subscriptions, and triggers.
+
+### 2b — Run the storage SQL
+
+1. In the same SQL Editor, paste and run `supabase/storage.sql`
+
+This creates the `covers` and `pages` buckets and all storage RLS policies.
 
 ### 3 — Install dependencies & start
 
@@ -173,6 +182,18 @@ The `translateText()` function in `src/services/translation.ts` will auto-detect
 **Realtime** is enabled on `manga` and `chapters` tables.
 
 **Storage buckets**: `covers` and `pages`, both publicly readable.
+
+### Storage Upload Path Rules
+
+All uploads **must** use the uploader's `user.id` as the first path segment.
+This is how the delete RLS policies verify ownership without a DB lookup.
+
+| Bucket | Path pattern | Example |
+|---|---|---|
+| `covers` | `{uid}/manga/{mangaId}/cover.{ext}` | `abc123/manga/def456/cover.png` |
+| `pages` | `{uid}/manga/{mangaId}/chapters/{chapterId}/{pageNumber}.{ext}` | `abc123/manga/def456/chapters/ghi789/1.png` |
+
+Run `supabase/storage.sql` in the **Supabase SQL Editor** after `schema.sql` to create the buckets and apply these policies.
 
 ---
 

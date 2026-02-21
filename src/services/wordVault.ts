@@ -37,3 +37,12 @@ export async function deleteFromWordVault(id: string): Promise<void> {
   const { error } = await supabase.from('word_vault').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── Canonical alias (session-based, no userId param) ────────
+
+/** Fetch the signed-in user's word vault, newest first. */
+export async function listMyWordVault(): Promise<WordVaultEntry[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated.');
+  return fetchWordVault(user.id);
+}

@@ -150,3 +150,62 @@ export async function deleteTranslationHistoryEntry(id: string): Promise<void> {
     .eq('id', id);
   if (error) throw error;
 }
+
+// ─── Canonical aliases (session-based, no userId param) ──────────────────────
+
+/**
+ * Fetch translation history for the signed-in user.
+ * Optionally filter by pageId.
+ */
+export async function listMyTranslationHistory(
+  opts: { pageId?: string } = {}
+): Promise<TranslationHistory[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated.');
+
+  let query = supabase
+    .from('translation_history')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: true });
+
+  if (opts.pageId) query = query.eq('page_id', opts.pageId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data as TranslationHistory[];
+}
+
+/** Save a new translation history row for the signed-in user. */
+export async function createTranslationHistory(row: {
+  page_id: string;
+  region_x: number;
+  region_y: number;
+  region_w: number;
+  region_h: number;
+  ocr_text: string;
+  translated: string | null;
+  romaji: string | null;
+  visible?: boolean;
+}): Promise<TranslationHistory> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated.');
+
+  const { data, error } = await supabase
+    .from('translation_history')
+    .insert({ ...row, user_id: user.id, visible: row.visible ?? true })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as TranslationHistory;
+}
+
+/** Toggle the visible flag on a translation history entry. */
+export async function toggleTranslationVisible(id: string, visible: boolean): Promise<void> {
+  return toggleTranslationHistoryVisibility(id, visible);
+}
+
+/** Delete a translation history entry by id. */
+export async function deleteTranslationHistory(id: string): Promise<void> {
+  return deleteTranslationHistoryEntry(id);
+}

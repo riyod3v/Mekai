@@ -4,9 +4,7 @@ import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { signIn, signUp, useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
-import { supabase } from '@/lib/supabase';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
-import SimpleModal from '@/components/SimpleModal';
 import clsx from 'clsx';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -92,8 +90,7 @@ function ErrorModal({
           <div className="mt-4 flex justify-end">
             <button
               onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
-              style={{ backgroundColor: '#40467c' }}
+              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white mekai-primary-bg"
             >
               OK
             </button>
@@ -107,7 +104,6 @@ function ErrorModal({
 // ─── Auth Page ────────────────────────────────────────────────────────────────
 
 type Tab = 'login' | 'signup';
-type EmailStatus = 'idle' | 'checking' | 'exists' | 'available' | 'invalid' | 'error';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -127,15 +123,8 @@ export default function AuthPage() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItems, setModalItems] = useState<string[]>([]);
-  const [emailStatus, setEmailStatus] = useState<EmailStatus>('idle');
-  const [emailStatusMsg, setEmailStatusMsg] = useState('');
 
-  // Verification flow state
-  const [verifyOpen, setVerifyOpen] = useState(false);
-  const [verifyEmail, setVerifyEmail] = useState('');
-  const [showOtp, setShowOtp] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSubmitting, setOtpSubmitting] = useState(false);
+
 
   const isSignup = tab === 'signup';
   const logoSrc = isDark
@@ -144,8 +133,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (!loading && session) {
-      const dest = session.user?.user_metadata?.role === 'translator' ? '/translator' : '/reader';
-      navigate(dest, { replace: true });
+      navigate('/', { replace: true });
     }
   }, [session, loading, navigate]);
 
@@ -154,51 +142,16 @@ export default function AuthPage() {
     setSubmitAttempted(false);
     setTouched({ username: false, email: false, password: false });
     setModalOpen(false);
-    setEmailStatus('idle');
-    setEmailStatusMsg('');
   }
-
-  // Debounced email existence check
-  useEffect(() => {
-    const e = email.trim().toLowerCase();
-    if (!e) { setEmailStatus('idle'); setEmailStatusMsg(''); return; }
-    if (!isValidEmail(e)) { setEmailStatus('invalid'); setEmailStatusMsg('Invalid email format'); return; }
-
-    setEmailStatus('checking');
-    setEmailStatusMsg('Checking...');
-
-    const t = setTimeout(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('email_registry')
-          .select('email')
-          .eq('email', e)
-          .maybeSingle();
-        if (error) throw error;
-        const exists = !!data?.email;
-        if (isSignup) {
-          setEmailStatus(exists ? 'exists' : 'available');
-          setEmailStatusMsg(exists ? 'Email already registered' : 'Email available');
-        } else {
-          setEmailStatus(exists ? 'exists' : 'available');
-          setEmailStatusMsg(exists ? 'Email found' : 'No account for this email');
-        }
-      } catch {
-        setEmailStatus('idle');
-        setEmailStatusMsg('');
-      }
-    }, 450);
-
-    return () => clearTimeout(t);
-  }, [email, isSignup]);
 
   function validateForm(): string[] {
     const errors: string[] = [];
-    if (isSignup && !username.trim()) errors.push('Username is required.');
+    if (isSignup) {
+      if (!username.trim()) errors.push('Username is required.');
+      else if (username.trim().length < 3) errors.push('Username must be at least 3 characters.');
+    }
     if (!email.trim()) errors.push('Email is required.');
     else if (!isValidEmail(email)) errors.push('Email format looks invalid.');
-    if (isSignup && emailStatus === 'exists') errors.push('Email is already registered.');
-    if (!isSignup && emailStatus === 'available' && email.trim()) errors.push('No account found for this email.');
     if (!password) errors.push('Password is required.');
     else if (isSignup) errors.push(...getPasswordIssues(password));
     return errors;
@@ -219,14 +172,11 @@ export default function AuthPage() {
     try {
       if (tab === 'login') {
         await signIn(email, password);
-        // session change picked up by useAuth → redirect effect fires
+        // session change picked up by useAuth → redirect to '/' fires
       } else {
-        await signUp(email, password, username.trim(), role);
-        // Show verification modal instead of immediately switching to login
-        setVerifyEmail(email.trim().toLowerCase());
-        setShowOtp(false);
-        setOtpCode('');
-        setVerifyOpen(true);
+        await signUp(email, password, username.trim(), role as 'reader' | 'translator');
+        toast.success('Account created! Signing you in…');
+        // session created immediately → redirect to '/' fires
       }
     } catch (err: unknown) {
       setModalItems([friendlyAuthError(err)]);
@@ -236,53 +186,7 @@ export default function AuthPage() {
     }
   }
 
-  async function handleVerifyOtp() {
-    if (otpCode.trim().length < 6) return;
-    setOtpSubmitting(true);
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: verifyEmail,
-        token: otpCode.trim(),
-        type: 'email',
-      });
-      if (error) throw error;
-      // Session will be created → useAuth picks it up → redirect effect fires
-      setVerifyOpen(false);
-    } catch (err: unknown) {
-      setModalItems([friendlyAuthError(err)]);
-      setModalOpen(true);
-    } finally {
-      setOtpSubmitting(false);
-    }
-  }
-
-  async function handleResendEmail() {
-    try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: verifyEmail });
-      if (error) throw error;
-      toast.success('Verification email resent!');
-    } catch {
-      toast.error('Failed to resend. Please try again in a moment.');
-    }
-  }
-
-  function closeVerifyModal() {
-    setVerifyOpen(false);
-    switchTab('login');
-    toast("You can sign in once you've verified your email.", { icon: 'ℹ️' });
-  }
-
-  // Real-time password feedback (signup only)
-  const showPwFeedback = isSignup && (touched.password || submitAttempted);
-
-  const emailStatusColor =
-    emailStatus === 'checking' ? 'text-slate-400'
-    : emailStatus === 'invalid' || emailStatus === 'error' ? 'text-red-400'
-    : isSignup && emailStatus === 'exists' ? 'text-amber-400'
-    : isSignup && emailStatus === 'available' ? 'text-emerald-400'
-    : !isSignup && emailStatus === 'exists' ? 'text-emerald-400'
-    : !isSignup && emailStatus === 'available' ? 'text-red-400'
-    : 'text-slate-400';
+  const showPwFeedback = isSignup && (password.length > 0 || submitAttempted);
 
   if (loading) {
     return (
@@ -331,8 +235,7 @@ export default function AuthPage() {
                     ? 'text-white shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
                 )}
-                style={tab === t ? { backgroundColor: '#40467c' } : undefined}
-              >
+                style={tab === t ? { backgroundColor: '#40467c' } : undefined}              >
                 {t === 'login' ? 'Sign In' : 'Sign Up'}
               </button>
             ))}
@@ -367,9 +270,6 @@ export default function AuthPage() {
                 className={inputCls}
                 autoComplete="email"
               />
-              {emailStatus !== 'idle' && (
-                <div className={`text-xs mt-0.5 ${emailStatusColor}`}>{emailStatusMsg}</div>
-              )}
             </div>
 
             {/* Password */}
@@ -470,64 +370,7 @@ export default function AuthPage() {
         onClose={() => setModalOpen(false)}
       />
 
-      {/* Email verification modal */}
-      <SimpleModal
-        open={verifyOpen}
-        title="Check your email"
-        onClose={closeVerifyModal}
-        primaryLabel="Back to Sign In"
-      >
-        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-          We sent a verification link to{' '}
-          <span className="font-semibold text-slate-900 dark:text-slate-100">{verifyEmail}</span>.
-          Click the link to activate your account, or enter the 6-digit code below.
-        </p>
 
-        <div className="mt-4 flex flex-col gap-3">
-          {/* OTP toggle */}
-          {!showOtp ? (
-            <button
-              type="button"
-              onClick={() => setShowOtp(true)}
-              className="w-full py-2.5 rounded-xl text-sm font-medium border border-slate-300 dark:border-white/20 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
-            >
-              I have a code
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="000000"
-                maxLength={6}
-                className={clsx(inputCls, 'text-center tracking-[0.4em] text-lg font-mono')}
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={handleVerifyOtp}
-                disabled={otpCode.length !== 6 || otpSubmitting}
-                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-                style={{ backgroundColor: '#40467c' }}
-              >
-                {otpSubmitting && <LoadingSpinner size="sm" />}
-                Verify Code
-              </button>
-            </div>
-          )}
-
-          {/* Resend */}
-          <button
-            type="button"
-            onClick={handleResendEmail}
-            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:underline text-center transition-colors"
-          >
-            Didn't get the email? Resend
-          </button>
-        </div>
-      </SimpleModal>
     </div>
   );
 }

@@ -107,3 +107,29 @@ export async function deleteChapter(chapterId: string): Promise<void> {
   const { error } = await supabase.from('chapters').delete().eq('id', chapterId);
   if (error) throw error;
 }
+
+// ─── Canonical aliases ───────────────────────────────────────
+
+/** List chapters for a manga, ordered by chapter number. */
+export async function listChapters(mangaId: string): Promise<Chapter[]> {
+  return fetchChaptersByManga(mangaId);
+}
+
+/** Create a single chapter record (without page uploads). */
+export async function createChapter(
+  mangaId: string,
+  payload: { chapter_number: number; title?: string | null; uploaded_by: string }
+): Promise<Chapter> {
+  const { data, error } = await supabase
+    .from('chapters')
+    .insert({
+      manga_id: mangaId,
+      chapter_number: payload.chapter_number,
+      title: payload.title ?? null,
+      uploaded_by: payload.uploaded_by,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as Chapter;
+}

@@ -122,3 +122,22 @@ export async function deleteManga(id: string): Promise<void> {
   const { error } = await supabase.from('manga').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── Canonical aliases ───────────────────────────────────────
+
+/**
+ * List all manga readable by the current user:
+ * shared manga (all authenticated) + the user's own private manga.
+ */
+export async function listManga(): Promise<Manga[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
+
+  const { data, error } = await supabase
+    .from('manga')
+    .select('*')
+    .or(userId ? `visibility.eq.shared,and(visibility.eq.private,owner_id.eq.${userId})` : 'visibility.eq.shared')
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data as Manga[];
+}

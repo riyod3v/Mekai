@@ -56,4 +56,8 @@
     z-index: 30;
     pointer-events: all;
   }
+
+  .mekai-primary-bg   { background-color: #40467c; }
+  .mekai-primary-text { color: #40467c; }
+  .mekai-primary-border { border-color: rgba(64, 70, 124, 0.45); }
 }

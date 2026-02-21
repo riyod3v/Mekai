@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import { useState } from 'react';
 
 import { Navbar } from '@/components/Navbar';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { ProfileSettingsModal } from '@/components/ProfileSettingsModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
@@ -33,6 +35,8 @@ function AppRoutes() {
   const { role, isLoading: roleLoading } = useRole();
   useTheme(); // apply + persist theme globally across all routes
 
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
   const location = useLocation();
   const isLanding = location.pathname === '/';
 
@@ -40,7 +44,13 @@ function AppRoutes() {
 
   return (
     <>
-      {!isLanding && <Navbar />}
+      {!isLanding && (
+        <Navbar onProfileSettings={() => setProfileModalOpen(true)} />
+      )}
+      <ProfileSettingsModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
       <Routes>
         {/* Signin/Signup */}
         <Route

@@ -10,7 +10,19 @@ export interface Profile {
   role: Role;
   avatar_url: string | null;
   created_at: string;
+  updated_at: string;
 }
+
+// ─── DB row aliases (match schema column names exactly) ──────
+
+/** Alias for Page matching schema naming convention */
+export type PageRow = Page;
+
+/** Alias for TranslationHistory matching schema naming convention */
+export type TranslationHistoryRow = TranslationHistory;
+
+/** Alias for WordVaultEntry matching schema naming convention */
+export type WordVaultRow = WordVaultEntry;
 
 export type Visibility = 'shared' | 'private';
 
