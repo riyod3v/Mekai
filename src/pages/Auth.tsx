@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { signIn, signUp, useAuth } from '@/hooks/useAuth';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeContext } from '@/context/ThemeContext';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import clsx from 'clsx';
 
@@ -108,7 +108,7 @@ type Tab = 'login' | 'signup';
 export default function AuthPage() {
   const navigate = useNavigate();
   const { session, loading } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useThemeContext();
 
   const [tab, setTab] = useState<Tab>('login');
   const [email, setEmail] = useState('');

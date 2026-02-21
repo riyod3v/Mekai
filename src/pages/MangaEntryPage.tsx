@@ -131,7 +131,7 @@ export default function MangaEntryPage() {
           {canUploadChapter && (
             <button
               onClick={() => setShowChapterModal(true)}
-              className="mt-2 flex items-center gap-2 w-fit px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+              className="mt-2 flex items-center gap-2 w-fit px-4 py-2 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
             >
               <Upload className="h-4 w-4" />
               Upload / Update Chapter

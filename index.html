@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/IMG/icons/mekai-icon-dark-32.png" />
+    <!-- Favicon: system-preference based (light/dark OS theme) -->
+    <link rel="icon" type="image/png" href="/IMG/icons/mekai-icon-light-32.png" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" href="/IMG/icons/mekai-icon-dark-32.png" media="(prefers-color-scheme: dark)" />
+    <!-- Apple touch icons -->
+    <link rel="apple-touch-icon" href="/IMG/icons/mekai-icon-light-192.png" media="(prefers-color-scheme: light)" />
+    <link rel="apple-touch-icon" href="/IMG/icons/mekai-icon-dark-192.png" media="(prefers-color-scheme: dark)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mekai</title>
   </head>

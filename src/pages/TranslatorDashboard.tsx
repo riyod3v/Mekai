@@ -69,12 +69,12 @@ export default function TranslatorDashboard() {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-white">Translator Dashboard</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Manage your shared manga</p>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Translator Dashboard</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage your shared manga</p>
           </div>
           <button
             onClick={() => setShowMangaModal(true)}
-            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
           >
             <Plus className="h-4 w-4" />
             New Manga
@@ -107,20 +107,20 @@ export default function TranslatorDashboard() {
       {/* Right column – Chapter manager for selected manga */}
       {selectedManga && (
         <div className="w-full lg:w-80 shrink-0">
-          <div className="glass rounded-2xl border border-white/10 p-5">
+          <div className="glass rounded-2xl border border-black/10 dark:border-white/10 p-5">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1 flex items-center gap-1">
+                <p className="text-xs text-slate-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1 flex items-center gap-1">
                   <BookMarked className="h-3 w-3" />
                   Chapters
                 </p>
-                <h2 className="font-semibold text-gray-100 text-sm line-clamp-2">
+                <h2 className="font-semibold text-slate-900 dark:text-gray-100 text-sm line-clamp-2">
                   {selectedManga.title}
                 </h2>
               </div>
               <button
                 onClick={() => setSelectedManga(null)}
-                className="text-gray-500 hover:text-white text-xs"
+                className="text-slate-400 dark:text-gray-500 hover:text-slate-900 dark:hover:text-white text-xs"
               >
                 ✕
               </button>
@@ -135,17 +135,17 @@ export default function TranslatorDashboard() {
             </button>
 
             {chapters.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">No chapters uploaded yet.</p>
+              <p className="text-sm text-slate-400 dark:text-gray-500 text-center py-4">No chapters uploaded yet.</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {chapters.map((ch) => (
-                  <li key={ch.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/5 border border-white/10">
+                  <li key={ch.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10">
                     <div>
-                      <p className="text-sm text-gray-200 font-medium">
+                      <p className="text-sm text-slate-800 dark:text-gray-200 font-medium">
                         Ch. {ch.chapter_number}
                         {ch.title ? ` — ${ch.title}` : ''}
                       </p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                      <p className="text-xs text-slate-400 dark:text-gray-500 flex items-center gap-1 mt-0.5">
                         <Clock className="h-3 w-3" />
                         {formatDistanceToNow(ch.updated_at)} ago
                       </p>

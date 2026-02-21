@@ -138,7 +138,7 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
       <button
         type="submit"
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-medium text-sm transition-colors"
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 disabled:opacity-60 text-white font-medium text-sm transition-opacity"
       >
         <Upload className="h-4 w-4" />
         {loading ? `Uploading (${progress?.done ?? 0}/${progress?.total ?? pages.length})…` : submitLabel}

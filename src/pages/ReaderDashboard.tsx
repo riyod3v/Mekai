@@ -73,13 +73,13 @@ export default function ReaderDashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Library</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Browse and read manga</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Library</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Browse and read manga</p>
         </div>
         {tab === 'private' && (
           <button
             onClick={() => setShowUploadModal(true)}
-            className="sm:ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+            className="sm:ml-auto flex items-center gap-2 px-4 py-2 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
           >
             <Plus className="h-4 w-4" />
             Add Private Manga
@@ -98,7 +98,7 @@ export default function ReaderDashboard() {
             onClick={() => setTab(id)}
             className={clsx(
               'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              tab === id ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
+              tab === id ? 'mekai-primary-bg text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             )}
           >
             <Icon className="h-4 w-4" />
@@ -114,7 +114,7 @@ export default function ReaderDashboard() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search manga…"
-          className="w-full sm:max-w-xs px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-gray-100 placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+          className="w-full sm:max-w-xs px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
         />
       </div>
 

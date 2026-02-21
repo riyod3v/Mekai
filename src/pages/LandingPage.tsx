@@ -1,4 +1,4 @@
-import { useTheme } from "../hooks/useTheme";
+import { useThemeContext } from "@/context/ThemeContext";
 import { Link } from "react-router-dom";
 import { Sun, Moon, BookOpen, Languages, Vault, Users } from "lucide-react";
 
@@ -11,7 +11,7 @@ const features = [
   },
   {
     icon: Languages,
-    title: "Instant Translation",
+    title: "OCR Translation",
     description:
       "Select any text panel and get instant translations powered by AI — no app switching needed.",
   },
@@ -30,7 +30,7 @@ const features = [
 ];
 
 export default function LandingPage() {
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useThemeContext();
 
   const logoSrc = isDark
     ? "/IMG/branding/mekai-logo-dark.svg"
@@ -61,7 +61,7 @@ export default function LandingPage() {
 
             <Link
               to="/auth"
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-medium mekai-primary-bg hover:opacity-90 text-white transition-opacity"
             >
               Log In
             </Link>
@@ -85,7 +85,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               to="/auth"
-              className="px-6 py-3 rounded-xl text-base font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+              className="px-6 py-3 rounded-xl text-base font-semibold mekai-primary-bg hover:opacity-90 text-white transition-opacity"
             >
               Get Started
             </Link>

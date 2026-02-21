@@ -15,7 +15,8 @@ export async function getMyProfile(): Promise<Profile> {
     .eq('id', user.id)
     .single();
   if (error) throw new Error(error.message);
-  return data as Profile;
+  // Attach email from auth.users (not stored in profiles table)
+  return { ...(data as Profile), email: user.email };
 }
 
 // ─── Mutations ───────────────────────────────────────────────
@@ -35,5 +36,5 @@ export async function updateMyProfile(
     .select()
     .single();
   if (error) throw new Error(error.message);
-  return data as Profile;
+  return { ...(data as Profile), email: user.email };
 }

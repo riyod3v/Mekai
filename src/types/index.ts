@@ -9,6 +9,8 @@ export interface Profile {
   username: string;
   role: Role;
   avatar_url: string | null;
+  /** Fetched from auth.users at runtime — not stored in the profiles table. */
+  email?: string;
   created_at: string;
   updated_at: string;
 }
