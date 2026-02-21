@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 
@@ -6,6 +6,7 @@ import { Navbar } from '@/components/Navbar';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
+import { useTheme } from '@/hooks/useTheme';
 import { FullPageLoader } from '@/components/LoadingSpinner';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { SetupScreen } from '@/components/SetupScreen';
@@ -16,6 +17,7 @@ import TranslatorDashboard from '@/pages/TranslatorDashboard';
 import MangaEntryPage from '@/pages/MangaEntryPage';
 import MangaReaderPage from '@/pages/MangaReaderPage';
 import WordVaultPage from '@/pages/WordVaultPage';
+import LandingPage from '@/pages/LandingPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,26 +31,30 @@ const queryClient = new QueryClient({
 function AppRoutes() {
   const { user, loading: authLoading } = useAuth();
   const { role, isLoading: roleLoading } = useRole();
+  useTheme(); // apply + persist theme globally across all routes
+
+  const location = useLocation();
+  const isLanding = location.pathname === '/';
 
   if (authLoading || (user && roleLoading)) return <FullPageLoader />;
 
   return (
     <>
-      <Navbar />
+      {!isLanding && <Navbar />}
       <Routes>
-        {/* Public */}
+        {/* Signin/Signup */}
         <Route
           path="/auth"
           element={!user ? <AuthPage /> : <Navigate to={role === 'translator' ? '/translator' : '/reader'} replace />}
         />
 
-        {/* Default redirect */}
+        {/* Default Landing  */}
         <Route
           path="/"
           element={
-            !user
-              ? <Navigate to="/auth" replace />
-              : <Navigate to={role === 'translator' ? '/translator' : '/reader'} replace />
+            user
+              ? <Navigate to={role === 'translator' ? '/translator' : '/reader'} replace />
+              : <LandingPage />
           }
         />
 
