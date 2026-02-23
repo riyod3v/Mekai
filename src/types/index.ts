@@ -50,6 +50,8 @@ export interface Chapter {
   uploaded_by: string;
   created_at: string;
   updated_at: string;
+  /** URL to the .cbz archive stored in Supabase Storage */
+  cbz_url?: string | null;
   // Joined field
   page_count?: number;
 }
@@ -122,5 +124,8 @@ export interface MangaFormData {
 export interface ChapterFormData {
   chapterNumber: number;
   title: string;
+  /** Single .cbz or .zip archive file */
+  cbzFile: File | null;
+  /** @deprecated Legacy page-image array — use cbzFile instead */
   pages: File[];
 }

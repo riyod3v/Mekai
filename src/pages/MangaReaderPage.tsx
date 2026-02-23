@@ -73,6 +73,13 @@ export default function MangaReaderPage() {
     enabled: !!chapterId,
     queryFn: () => fetchPagesByChapter(chapterId!),
     staleTime: Infinity,
+    // TODO (CBZ migration): When the chapter has a `cbz_url` instead of individual page rows,
+    // replace fetchPagesByChapter with a JSZip extraction step:
+    //   import JSZip from 'jszip';
+    //   const zip = await JSZip.loadAsync(await fetch(chapter.cbz_url).then(r => r.arrayBuffer()));
+    //   const imageFiles = Object.values(zip.files).filter(f => f.name.match(/\.(jpe?g|png|webp)$/i));
+    //   const objectUrls = await Promise.all(imageFiles.map(f => f.async('blob').then(URL.createObjectURL)));
+    // Then map those URLs into Page-shaped objects for rendering.
   });
 
   const currentPage: Page | undefined = pages[currentPageIdx];

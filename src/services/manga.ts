@@ -11,23 +11,29 @@ export type MangaRow = Manga;
 export async function fetchSharedManga(): Promise<Manga[]> {
   const { data, error } = await supabase
     .from('manga')
-    .select('*')
+    .select('*, chapters(count)')
     .eq('visibility', 'shared')
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  return data as Manga[];
+  return (data as any[]).map(({ chapters, ...rest }) => ({
+    ...rest,
+    chapter_count: chapters?.[0]?.count ?? 0,
+  })) as Manga[];
 }
 
 /** Fetch private manga owned by the current user */
 export async function fetchMyPrivateManga(userId: string): Promise<Manga[]> {
   const { data, error } = await supabase
     .from('manga')
-    .select('*')
+    .select('*, chapters(count)')
     .eq('visibility', 'private')
     .eq('owner_id', userId)
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  return data as Manga[];
+  return (data as any[]).map(({ chapters, ...rest }) => ({
+    ...rest,
+    chapter_count: chapters?.[0]?.count ?? 0,
+  })) as Manga[];
 }
 
 /** Fetch a single manga by id */
@@ -46,12 +52,15 @@ export async function fetchMangaById(id: string): Promise<Manga> {
 export async function fetchMangaByOwner(ownerId: string): Promise<Manga[]> {
   const { data, error } = await supabase
     .from('manga')
-    .select('*')
+    .select('*, chapters(count)')
     .eq('owner_id', ownerId)
     .eq('visibility', 'shared')
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  return data as Manga[];
+  return (data as any[]).map(({ chapters, ...rest }) => ({
+    ...rest,
+    chapter_count: chapters?.[0]?.count ?? 0,
+  })) as Manga[];
 }
 
 // ─── Mutations ───────────────────────────────────────────────

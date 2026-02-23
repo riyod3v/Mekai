@@ -14,13 +14,13 @@ export function NoCoverPlaceholder({ className }: Props) {
     <div
       className={clsx(
         'flex flex-col items-center justify-center gap-2',
-        'bg-gradient-to-br from-[#1a1b26] to-[#16161e]',
-        'border border-white/10 rounded-xl',
+        'bg-slate-100 dark:bg-gradient-to-br dark:from-[#1a1b26] dark:to-[#16161e]',
+        'border border-slate-200 dark:border-white/10 rounded-xl',
         className
       )}
     >
-      <ImageOff className="h-7 w-7 text-gray-600" strokeWidth={1.5} />
-      <span className="text-[11px] font-medium text-gray-600 tracking-wide select-none">
+      <ImageOff className="h-7 w-7 text-slate-400 dark:text-gray-600" strokeWidth={1.5} />
+      <span className="text-[11px] font-medium text-slate-400 dark:text-gray-600 tracking-wide select-none">
         No Cover
       </span>
     </div>

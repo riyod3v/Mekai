@@ -40,6 +40,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export const BUCKETS = {
   COVERS: 'covers',
   PAGES: 'pages',
+  CHAPTERS: 'chapters',
 } as const;
 
 export function getCoverUrl(path: string) {

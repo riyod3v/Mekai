@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Upload } from 'lucide-react';
+import { FileArchive, Upload } from 'lucide-react';
 import type { ChapterFormData } from '@/types';
 import clsx from 'clsx';
 
@@ -12,30 +12,35 @@ interface Props {
 export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel = 'Upload Chapter' }: Props) {
   const [chapterNumber, setChapterNumber] = useState(existingChapterNumber ?? 1);
   const [title, setTitle] = useState('');
-  const [pages, setPages] = useState<File[]>([]);
+  const [cbzFile, setCbzFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState('');
 
-  function handleFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    setPages(files);
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (file && !file.name.match(/\.(cbz|zip)$/i)) {
+      setError('Only .cbz or .zip files are supported.');
+      setCbzFile(null);
+      return;
+    }
+    setError('');
+    setCbzFile(file);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (pages.length === 0) { setError('Please select page images.'); return; }
+    if (!cbzFile) { setError('Please select a .cbz or .zip file.'); return; }
     setError('');
     setLoading(true);
     try {
       await onSubmit({
         chapterNumber,
         title: title.trim(),
-        pages,
+        cbzFile,
+        pages: [], // legacy field, unused in CBZ flow
       });
       setTitle('');
-      setPages([]);
-      setProgress(null);
+      setCbzFile(null);
     } catch (err: unknown) {
       setError((err as Error).message ?? 'Upload failed.');
     } finally {
@@ -45,10 +50,10 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {/* Chapter number */}
+      {/* Chapter number + title */}
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="text-xs text-gray-400 mb-1 block">Chapter Number *</label>
+          <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">Chapter Number *</label>
           <input
             type="number"
             min={1}
@@ -60,7 +65,7 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
           />
         </div>
         <div className="flex-[2]">
-          <label className="text-xs text-gray-400 mb-1 block">Chapter Title (optional)</label>
+          <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">Chapter Title (optional)</label>
           <input
             type="text"
             value={title}
@@ -71,81 +76,65 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
         </div>
       </div>
 
-      {/* Pages upload */}
+      {/* CBZ / ZIP file drop zone */}
       <div>
-        <label className="text-xs text-gray-400 mb-1 block">
-          Page Images * ({pages.length} selected)
+        <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">
+          Comic Archive (.cbz / .zip) *
         </label>
         <label
           className={clsx(
             'flex flex-col items-center justify-center w-full py-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors',
-            pages.length > 0
+            cbzFile
               ? 'border-indigo-500/50 bg-indigo-500/5'
-              : 'border-white/20 hover:border-indigo-500/40'
+              : 'border-slate-300 dark:border-white/20 hover:border-indigo-500/40'
           )}
         >
-          <Image className="h-8 w-8 text-gray-500 mb-2" />
-          <span className="text-sm text-gray-400">
-            {pages.length > 0
-              ? `${pages.length} page${pages.length > 1 ? 's' : ''} selected`
-              : 'Click to select page images'}
-          </span>
-          <span className="text-xs text-gray-600 mt-1">
-            Files will be sorted by name
-          </span>
+          <FileArchive className="h-8 w-8 text-slate-400 dark:text-gray-500 mb-2" />
+          {cbzFile ? (
+            <>
+              <span className="text-sm text-indigo-600 dark:text-indigo-300 font-medium">{cbzFile.name}</span>
+              <span className="text-xs text-slate-400 dark:text-gray-500 mt-1">
+                {(cbzFile.size / 1024 / 1024).toFixed(2)} MB
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm text-slate-500 dark:text-gray-400">Click to select archive</span>
+              <span className="text-xs text-slate-400 dark:text-gray-600 mt-1">.cbz or .zip only</span>
+            </>
+          )}
           <input
             type="file"
-            accept="image/*"
-            multiple
-            onChange={handleFilesChange}
+            accept=".cbz,.zip,application/zip,application/x-cbz"
+            onChange={handleFileChange}
             className="sr-only"
           />
         </label>
-
-        {/* File list preview */}
-        {pages.length > 0 && (
-          <ul className="mt-2 max-h-32 overflow-y-auto flex flex-col gap-1">
-            {[...pages]
-              .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-              .map((f, i) => (
-                <li key={i} className="text-xs text-gray-400 flex items-center gap-1">
-                  <Image className="h-3 w-3 text-gray-600 shrink-0" />
-                  {f.name}
-                </li>
-              ))}
-          </ul>
-        )}
       </div>
-
-      {/* Progress */}
-      {progress && (
-        <div>
-          <div className="flex justify-between text-xs text-gray-400 mb-1">
-            <span>Uploading…</span>
-            <span>{progress.done}/{progress.total}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-gray-700 overflow-hidden">
-            <div
-              className="h-full bg-indigo-500 transition-all"
-              style={{ width: `${(progress.done / progress.total) * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {error && <p className="text-red-400 text-xs">{error}</p>}
 
+      {/* Upload progress bar — indeterminate animation while the file is in-flight */}
+      {loading && (
+        <div className="w-full flex flex-col gap-1.5">
+          <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full w-1/2 rounded-full mekai-primary-bg animate-[slide_1.4s_ease-in-out_infinite]" />
+          </div>
+          <p className="text-xs text-center text-gray-400">Uploading archive, please wait…</p>
+        </div>
+      )}
+
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || !cbzFile}
         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 disabled:opacity-60 text-white font-medium text-sm transition-opacity"
       >
         <Upload className="h-4 w-4" />
-        {loading ? `Uploading (${progress?.done ?? 0}/${progress?.total ?? pages.length})…` : submitLabel}
+        {loading ? 'Uploading…' : submitLabel}
       </button>
     </form>
   );
 }
 
 const inputCls =
-  'w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-gray-100 placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors';
+  'w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors';

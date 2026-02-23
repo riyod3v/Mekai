@@ -103,6 +103,65 @@ export async function uploadChapter(
   return { chapter, pages: pagesData as Page[] };
 }
 
+/**
+ * Upload a single .cbz/.zip archive for a chapter.
+ * Upserts the chapter record and stores the public URL in the `cbz_url` column.
+ */
+export async function uploadCbzChapter(
+  formData: ChapterFormData,
+  mangaId: string,
+  uploaderId: string
+): Promise<{ chapter: Chapter }> {
+  if (!formData.cbzFile) throw new Error('No .cbz file provided.');
+
+  // Verify ownership before any insert — prevents RLS "new row violates
+  // row-level security policy" errors when the caller is not the manga owner.
+  const { data: mangaRow, error: mangaFetchErr } = await supabase
+    .from('manga')
+    .select('owner_id')
+    .eq('id', mangaId)
+    .single();
+  if (mangaFetchErr || !mangaRow) {
+    throw new Error('Manga not found or access denied.');
+  }
+  if (mangaRow.owner_id !== uploaderId) {
+    throw new Error('You do not have permission to upload chapters to this manga.');
+  }
+
+  const ext = formData.cbzFile.name.split('.').pop() ?? 'cbz';
+  const storagePath = `${uploaderId}/${mangaId}/${formData.chapterNumber}-${uuidv4()}.${ext}`;
+
+  // Upload the archive
+  const { error: uploadErr } = await supabase.storage
+    .from(BUCKETS.CHAPTERS)
+    .upload(storagePath, formData.cbzFile, { upsert: true });
+  if (uploadErr) throw new Error(uploadErr.message);
+
+  const { data: urlData } = supabase.storage
+    .from(BUCKETS.CHAPTERS)
+    .getPublicUrl(storagePath);
+
+  // Upsert the chapter record
+  const { data: chapterData, error: chapterErr } = await supabase
+    .from('chapters')
+    .upsert(
+      {
+        manga_id: mangaId,
+        chapter_number: formData.chapterNumber,
+        title: formData.title || null,
+        uploaded_by: uploaderId,
+        cbz_url: urlData.publicUrl,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'manga_id,chapter_number' }
+    )
+    .select()
+    .single();
+  if (chapterErr) throw new Error(chapterErr.message);
+
+  return { chapter: chapterData as Chapter };
+}
+
 export async function deleteChapter(chapterId: string): Promise<void> {
   const { error } = await supabase.from('chapters').delete().eq('id', chapterId);
   if (error) throw error;

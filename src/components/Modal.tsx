@@ -28,13 +28,13 @@ export function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }:
       />
 
       {/* Panel */}
-      <div className={`relative w-full ${maxWidth} glass rounded-2xl border border-white/10 shadow-2xl`}>
+      <div className={`relative w-full ${maxWidth} bg-white dark:bg-slate-900/95 rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          {title && <h2 className="font-semibold text-gray-100">{title}</h2>}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-white/10">
+          {title && <h2 className="font-semibold text-slate-900 dark:text-gray-100">{title}</h2>}
           <button
             onClick={onClose}
-            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="ml-auto p-1.5 rounded-lg text-slate-400 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
