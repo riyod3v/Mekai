@@ -33,6 +33,7 @@ export interface Manga {
   title: string;
   description: string | null;
   cover_url: string | null;
+  genre: string[] | null;
   visibility: Visibility;
   owner_id: string;
   created_at: string;
@@ -113,6 +114,7 @@ export type ReadingMode = 'page' | 'scroll';
 export interface MangaFormData {
   title: string;
   description: string;
+  genre: string[];
   visibility: Visibility;
   cover: File | null;
 }

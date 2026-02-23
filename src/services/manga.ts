@@ -66,6 +66,7 @@ export async function createManga(
     .insert({
       title: formData.title,
       description: formData.description || null,
+      genre: formData.genre.length > 0 ? formData.genre : null,
       visibility: formData.visibility,
       cover_url: null,
       owner_id: ownerId,
@@ -97,7 +98,7 @@ export async function createManga(
 
 export async function updateManga(
   id: string,
-  patch: Partial<Pick<Manga, 'title' | 'description' | 'cover_url'>>,
+  patch: Partial<Pick<Manga, 'title' | 'description' | 'cover_url' | 'genre'>>,
   ownerId: string,
   newCover?: File
 ): Promise<Manga> {

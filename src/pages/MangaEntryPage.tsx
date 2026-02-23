@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, ImageIcon, X } from 'lucide-react';
+import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { fetchMangaById, updateManga, deleteManga } from '@/services/manga';
 import { deleteMangaCover } from '@/services/storageCovers';
@@ -11,12 +11,11 @@ import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
 import { Modal } from '@/components/Modal';
 import { ChapterUploadForm } from '@/components/ChapterUploadForm';
+import { NoCoverPlaceholder } from '@/components/NoCoverPlaceholder';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { formatDistanceToNow, formatDate } from '@/lib/dateUtils';
 import type { ChapterFormData } from '@/types';
-
-const PLACEHOLDER_COVER = 'https://picsum.photos/seed/mekai-placeholder/300/420';
 
 export default function MangaEntryPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +29,9 @@ export default function MangaEntryPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editGenres, setEditGenres] = useState<string[]>([]);
+  const [editGenreInput, setEditGenreInput] = useState('');
+  const editGenreInputRef = useRef<HTMLInputElement>(null);
   const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
   const [editCoverPreview, setEditCoverPreview] = useState<string | null>(null);
   const [removeCover, setRemoveCover] = useState(false);
@@ -80,6 +82,7 @@ export default function MangaEntryPage() {
         {
           title: editTitle.trim(),
           description: editDescription.trim(),
+          genre: editGenres.length > 0 ? editGenres : null,
           ...(removeCover ? { cover_url: null } : {}),
         },
         manga!.owner_id,
@@ -119,6 +122,8 @@ export default function MangaEntryPage() {
     if (!manga) return;
     setEditTitle(manga.title);
     setEditDescription(manga.description ?? '');
+    setEditGenres(manga.genre ?? []);
+    setEditGenreInput('');
     setEditCoverFile(null);
     setEditCoverPreview(null);
     setRemoveCover(false);
@@ -165,24 +170,27 @@ export default function MangaEntryPage() {
       </Link>
 
       {/* Manga header */}
-      <div className="flex flex-col sm:flex-row gap-6 mb-10">
+      <div className="flex flex-col items-center sm:items-start sm:flex-row gap-6 mb-10">
         {/* Cover */}
-        <div className="shrink-0 w-36 sm:w-44">
-          <img
-            src={manga.cover_url || PLACEHOLDER_COVER}
-            alt={manga.title}
-            className="w-full aspect-[3/4] object-cover rounded-xl shadow-2xl"
-            onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_COVER; }}
-          />
-        </div>
+        {manga.cover_url ? (
+          <div className="shrink-0 w-36 sm:w-48 max-w-[200px]">
+            <img
+              src={manga.cover_url}
+              alt={manga.title}
+              className="w-full h-auto object-contain rounded-xl shadow-2xl"
+            />
+          </div>
+        ) : (
+          <NoCoverPlaceholder className="shrink-0 w-36 sm:w-48 max-w-[200px] aspect-[2/3]" />
+        )}
 
         {/* Metadata */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 min-w-0">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
             {manga.title}
           </h1>
           {manga.description && (
-            <p className="text-sm text-gray-400 max-w-xl leading-relaxed">{manga.description}</p>
+            <p className="text-sm text-gray-400 w-full max-w-full leading-relaxed line-clamp-3 break-words overflow-hidden">{manga.description}</p>
           )}
           <div className="flex flex-wrap gap-4 text-xs text-gray-500">
             <span className="flex items-center gap-1">
@@ -202,6 +210,11 @@ export default function MangaEntryPage() {
                 Shared
               </span>
             )}
+            {manga.genre && manga.genre.length > 0 && manga.genre.map((g) => (
+              <span key={g} className="px-1.5 py-0.5 rounded-md bg-white/5 text-gray-400 border border-white/10 font-medium">
+                {g}
+              </span>
+            ))}
           </div>
 
           <div className="flex flex-wrap gap-2 mt-2">
@@ -316,26 +329,30 @@ export default function MangaEntryPage() {
           className="flex flex-col gap-4"
         >
           {/* Cover preview / picker */}
-          <div className="flex items-start gap-4">
-            <div className="shrink-0 w-24 aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center">
-              {removeCover ? (
-                <span className="text-xs text-slate-400 dark:text-gray-500 text-center p-2">No cover</span>
-              ) : editCoverPreview ? (
+          <div className="flex items-center gap-3">
+            {/* Thumbnail — cover or placeholder */}
+            <div className="shrink-0 w-20 aspect-[3/4] rounded-xl overflow-hidden">
+              {editCoverPreview ? (
                 <img src={editCoverPreview} alt="New cover" className="w-full h-full object-cover" />
-              ) : manga?.cover_url ? (
+              ) : (manga?.cover_url && !removeCover) ? (
                 <img src={manga.cover_url} alt="Current cover" className="w-full h-full object-cover" />
               ) : (
-                <ImageIcon className="h-6 w-6 text-slate-400 dark:text-gray-600" />
+                <NoCoverPlaceholder className="w-full h-full rounded-xl" />
               )}
             </div>
-            <div className="flex flex-col gap-2 pt-1">
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => editCoverRef.current?.click()}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-gray-300 transition-colors"
               >
                 <Upload className="h-3.5 w-3.5" />
-                {editCoverFile ? 'Change' : 'Upload new cover'}
+                {editCoverFile
+                  ? 'Change cover'
+                  : (manga?.cover_url && !removeCover)
+                    ? 'Change cover'
+                    : 'Upload cover (optional)'
+                }
               </button>
               {(manga?.cover_url || editCoverFile) && !removeCover && (
                 <button
@@ -366,6 +383,61 @@ export default function MangaEntryPage() {
             rows={3}
             className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors resize-none"
           />
+
+          {/* Genre chips */}
+          <div className="flex flex-col gap-1.5">
+            <div
+              className="flex flex-wrap gap-1.5 min-h-[42px] w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-sm transition-colors focus-within:border-indigo-500 cursor-text"
+              onClick={() => editGenreInputRef.current?.focus()}
+            >
+              {editGenres.map((g) => (
+                <span
+                  key={g}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/8 border border-white/15 text-gray-300 text-xs font-medium"
+                >
+                  {g}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setEditGenres((prev) => prev.filter((x) => x !== g)); }}
+                    className="text-gray-400 hover:text-gray-100 transition-colors leading-none"
+                    aria-label={`Remove ${g}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                ref={editGenreInputRef}
+                type="text"
+                value={editGenreInput}
+                onChange={(e) => setEditGenreInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const tag = editGenreInput.trim().replace(/,+$/, '').trim();
+                    if (tag) {
+                      const norm = tag.charAt(0).toUpperCase() + tag.slice(1);
+                      if (!editGenres.includes(norm)) setEditGenres((g) => [...g, norm]);
+                      setEditGenreInput('');
+                    }
+                  } else if (e.key === 'Backspace' && editGenreInput === '' && editGenres.length > 0) {
+                    setEditGenres((g) => g.slice(0, -1));
+                  }
+                }}
+                onBlur={() => {
+                  const tag = editGenreInput.trim().replace(/,+$/, '').trim();
+                  if (tag) {
+                    const norm = tag.charAt(0).toUpperCase() + tag.slice(1);
+                    if (!editGenres.includes(norm)) setEditGenres((g) => [...g, norm]);
+                    setEditGenreInput('');
+                  }
+                }}
+                placeholder={editGenres.length === 0 ? 'Genres — type & press Enter' : ''}
+                className="flex-1 min-w-[120px] bg-transparent text-gray-100 placeholder:text-gray-500 focus:outline-none text-sm"
+              />
+            </div>
+            <p className="text-xs text-gray-600">Press Enter or comma to add. Backspace removes the last tag.</p>
+          </div>
           <button
             type="submit"
             disabled={editMutation.isPending || !editTitle.trim()}
