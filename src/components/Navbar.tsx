@@ -24,7 +24,7 @@ export function Navbar() {
   if (!user) return null;
 
   return (
-    <header className="sticky top-0 z-50 w-full glass border-b border-white/10 shadow-lg">
+    <header className="sticky top-0 z-50 w-full bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-white/10 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">

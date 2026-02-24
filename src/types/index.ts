@@ -33,9 +33,9 @@ export interface Manga {
   title: string;
   description: string | null;
   cover_url: string | null;
-  genre: string[] | null;
   visibility: Visibility;
   owner_id: string;
+  genres?: string[];
   created_at: string;
   updated_at: string;
   // Joined field from chapters count (optional)
@@ -47,13 +47,10 @@ export interface Chapter {
   manga_id: string;
   chapter_number: number;
   title: string | null;
-  uploaded_by: string;
+  cbz_url: string;
+  owner_id: string;
   created_at: string;
   updated_at: string;
-  /** URL to the .cbz archive stored in Supabase Storage */
-  cbz_url?: string | null;
-  // Joined field
-  page_count?: number;
 }
 
 export interface Page {
@@ -116,16 +113,13 @@ export type ReadingMode = 'page' | 'scroll';
 export interface MangaFormData {
   title: string;
   description: string;
-  genre: string[];
   visibility: Visibility;
   cover: File | null;
+  genres?: string[];
 }
 
 export interface ChapterFormData {
   chapterNumber: number;
   title: string;
-  /** Single .cbz or .zip archive file */
-  cbzFile: File | null;
-  /** @deprecated Legacy page-image array — use cbzFile instead */
-  pages: File[];
+  cbzFile: File;
 }

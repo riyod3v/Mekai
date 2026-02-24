@@ -35,8 +35,6 @@ function PasswordInput({
   onChange,
   error,
   autoComplete,
-  show: showProp,
-  onToggleShow,
 }: {
   id: string;
   label: string;
@@ -44,12 +42,8 @@ function PasswordInput({
   onChange: (v: string) => void;
   error?: string;
   autoComplete?: string;
-  show?: boolean;
-  onToggleShow?: () => void;
 }) {
-  const [internalShow, setInternalShow] = useState(false);
-  const show = showProp !== undefined ? showProp : internalShow;
-  const toggle = onToggleShow ?? (() => setInternalShow((s) => !s));
+  const [show, setShow] = useState(false);
   return (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -62,16 +56,15 @@ function PasswordInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           autoComplete={autoComplete}
-          className={`w-full rounded-lg border px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${onToggleShow !== undefined || showProp === undefined ? 'pr-10' : 'pr-3'} focus:outline-none focus:ring-2 transition-colors ${
+          className={`w-full rounded-lg border px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 pr-10 focus:outline-none focus:ring-2 transition-colors ${
             error
               ? 'border-red-400 dark:border-red-500 focus:ring-red-400/30'
               : 'border-slate-300 dark:border-slate-600 focus:ring-indigo-400/30 focus:border-indigo-400 dark:focus:border-indigo-500'
           }`}
         />
-        {(onToggleShow !== undefined || showProp === undefined) && (
         <button
           type="button"
-          onClick={toggle}
+          onClick={() => setShow((s) => !s)}
           className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
           aria-label={show ? 'Hide password' : 'Show password'}
         >
@@ -90,7 +83,6 @@ function PasswordInput({
             </svg>
           )}
         </button>
-        )}
       </div>
       {error && <p className="mt-1 text-xs text-red-500 dark:text-red-400">{error}</p>}
     </div>
@@ -182,7 +174,6 @@ export default function SettingsPage() {
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw]         = useState('');
   const [confirmPw, setConfirmPw] = useState('');
-  const [showNewPw, setShowNewPw] = useState(false);
 
   const [pwErrors, setPwErrors] = useState({ current: '', new: '', confirm: '' });
   const [savingPw, setSavingPw]  = useState(false);
@@ -400,8 +391,6 @@ export default function SettingsPage() {
               onChange={(v) => { setNewPw(v); if (pwErrors.new) setPwErrors((p) => ({ ...p, new: '' })); }}
               error={pwErrors.new}
               autoComplete="new-password"
-              show={showNewPw}
-              onToggleShow={() => setShowNewPw((s) => !s)}
             />
 
             {/* Requirements checklist — shows once user starts typing */}
@@ -423,7 +412,6 @@ export default function SettingsPage() {
               onChange={(v) => { setConfirmPw(v); if (pwErrors.confirm) setPwErrors((p) => ({ ...p, confirm: '' })); }}
               error={pwErrors.confirm}
               autoComplete="new-password"
-              show={showNewPw}
             />
 
             <div className="flex justify-end">

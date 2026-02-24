@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { FileArchive, Upload } from 'lucide-react';
 import type { ChapterFormData } from '@/types';
 import clsx from 'clsx';
@@ -18,27 +18,17 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
-    if (file && !file.name.match(/\.(cbz|zip)$/i)) {
-      setError('Only .cbz or .zip files are supported.');
-      setCbzFile(null);
-      return;
-    }
-    setError('');
     setCbzFile(file);
+    setError('');
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cbzFile) { setError('Please select a .cbz or .zip file.'); return; }
+    if (!cbzFile) { setError('Please select a .cbz file.'); return; }
     setError('');
     setLoading(true);
     try {
-      await onSubmit({
-        chapterNumber,
-        title: title.trim(),
-        cbzFile,
-        pages: [], // legacy field, unused in CBZ flow
-      });
+      await onSubmit({ chapterNumber, title: title.trim(), cbzFile });
       setTitle('');
       setCbzFile(null);
     } catch (err: unknown) {
@@ -53,7 +43,7 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
       {/* Chapter number + title */}
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">Chapter Number *</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">Chapter Number *</label>
           <input
             type="number"
             min={1}
@@ -65,7 +55,7 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
           />
         </div>
         <div className="flex-[2]">
-          <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">Chapter Title (optional)</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">Chapter Title (optional)</label>
           <input
             type="text"
             value={title}
@@ -76,36 +66,29 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
         </div>
       </div>
 
-      {/* CBZ / ZIP file drop zone */}
+      {/* CBZ file picker */}
       <div>
-        <label className="text-xs text-slate-500 dark:text-gray-400 mb-1 block">
-          Comic Archive (.cbz / .zip) *
-        </label>
+        <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">.cbz File *</label>
         <label
           className={clsx(
             'flex flex-col items-center justify-center w-full py-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors',
             cbzFile
               ? 'border-indigo-500/50 bg-indigo-500/5'
-              : 'border-slate-300 dark:border-white/20 hover:border-indigo-500/40'
+              : 'border-gray-300 dark:border-white/20 hover:border-indigo-500/40'
           )}
         >
-          <FileArchive className="h-8 w-8 text-slate-400 dark:text-gray-500 mb-2" />
-          {cbzFile ? (
-            <>
-              <span className="text-sm text-indigo-600 dark:text-indigo-300 font-medium">{cbzFile.name}</span>
-              <span className="text-xs text-slate-400 dark:text-gray-500 mt-1">
-                {(cbzFile.size / 1024 / 1024).toFixed(2)} MB
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="text-sm text-slate-500 dark:text-gray-400">Click to select archive</span>
-              <span className="text-xs text-slate-400 dark:text-gray-600 mt-1">.cbz or .zip only</span>
-            </>
+          <FileArchive className="h-8 w-8 text-gray-500 mb-2" />
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            {cbzFile ? cbzFile.name : 'Click to select a .cbz file'}
+          </span>
+          {cbzFile && (
+            <span className="text-xs text-gray-500 mt-1">
+              {(cbzFile.size / 1024 / 1024).toFixed(1)} MB
+            </span>
           )}
           <input
             type="file"
-            accept=".cbz,.zip,application/zip,application/x-cbz"
+            accept=".cbz,application/x-cbz,application/zip"
             onChange={handleFileChange}
             className="sr-only"
           />
@@ -114,19 +97,9 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
 
       {error && <p className="text-red-400 text-xs">{error}</p>}
 
-      {/* Upload progress bar — indeterminate animation while the file is in-flight */}
-      {loading && (
-        <div className="w-full flex flex-col gap-1.5">
-          <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full w-1/2 rounded-full mekai-primary-bg animate-[slide_1.4s_ease-in-out_infinite]" />
-          </div>
-          <p className="text-xs text-center text-gray-400">Uploading archive, please wait…</p>
-        </div>
-      )}
-
       <button
         type="submit"
-        disabled={loading || !cbzFile}
+        disabled={loading}
         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 disabled:opacity-60 text-white font-medium text-sm transition-opacity"
       >
         <Upload className="h-4 w-4" />
@@ -137,4 +110,4 @@ export function ChapterUploadForm({ onSubmit, existingChapterNumber, submitLabel
 }
 
 const inputCls =
-  'w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors';
+  'w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-gray-300 dark:border-white/15 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors';

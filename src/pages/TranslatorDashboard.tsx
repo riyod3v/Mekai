@@ -54,7 +54,7 @@ export default function TranslatorDashboard() {
 
   const uploadChapterMutation = useMutation({
     mutationFn: (data: ChapterFormData) =>
-      uploadChapter(data, selectedManga!.id, user!.id),
+      uploadChapter(data, selectedManga!.id),
     onSuccess: ({ chapter }) => {
       queryClient.invalidateQueries({ queryKey: ['chapters', selectedManga!.id] });
       setShowChapterModal(false);
@@ -107,7 +107,7 @@ export default function TranslatorDashboard() {
       {/* Right column – Chapter manager for selected manga */}
       {selectedManga && (
         <div className="w-full lg:w-80 shrink-0">
-          <div className="glass rounded-2xl border border-black/10 dark:border-white/10 p-5">
+          <div className="bg-white dark:bg-white/5 backdrop-blur-md rounded-2xl border border-gray-200 dark:border-white/10 p-5">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-xs text-slate-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1 flex items-center gap-1">

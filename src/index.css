@@ -36,7 +36,7 @@
 
 @layer utilities {
   .glass {
-    @apply bg-white dark:bg-slate-900/60 backdrop-blur-md;
+    @apply bg-white/5 backdrop-blur-md border border-white/10;
   }
 
   .page-select-cursor {
@@ -60,9 +60,4 @@
   .mekai-primary-bg   { background-color: #40467c; }
   .mekai-primary-text { color: #40467c; }
   .mekai-primary-border { border-color: rgba(64, 70, 124, 0.45); }
-}
-
-@keyframes slide {
-  0%   { transform: translateX(-200%); }
-  100% { transform: translateX(400%); }
 }

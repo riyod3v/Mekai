@@ -54,25 +54,6 @@ function friendlyAuthError(err: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-// ─── Validation Helpers ──────────────────────────────────────────────────────
-
-function validateEmail(email: string): string | undefined {
-  if (!email.trim()) return 'Email is required';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Email is invalid';
-}
-
-function validatePasswordRequired(pw: string): string | undefined {
-  if (!pw) return 'Password is required';
-}
-
-function validateSignupPassword(pw: string): string | undefined {
-  if (!pw) return 'Password is required';
-  if (pw.length < 8) return 'Password must be at least 8 characters long';
-  if (!/[A-Z]/.test(pw)) return 'Password must contain at least one uppercase letter';
-  if (!/[0-9]/.test(pw)) return 'Password must contain at least one number';
-  if (!/[^A-Za-z0-9]/.test(pw)) return 'Password must contain at least one special character';
-}
-
 // ─── Auth Page ────────────────────────────────────────────────────────────────
 
 type Tab = 'login' | 'signup';
@@ -89,14 +70,8 @@ export default function AuthPage() {
   const [role, setRole] = useState<'reader' | 'translator'>('reader');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{
-    email?: string;
-    password?: string;
-    username?: string;
-    role?: string;
-  }>({});
-  const [formError, setFormError] = useState<string | null>(null);
-
+  const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; email?: string; password?: string }>({});
 
 
   const isSignup = tab === 'signup';
@@ -112,65 +87,49 @@ export default function AuthPage() {
 
   function switchTab(t: Tab) {
     setTab(t);
-    setErrors({});
-    setFormError(null);
+    setFormError('');
+    setFieldErrors({});
+  }
+
+  function validateFields(): boolean {
+    const errs: { username?: string; email?: string; password?: string } = {};
+    if (isSignup) {
+      if (!username.trim()) errs.username = 'Username is required';
+      else if (username.trim().length < 3) errs.username = 'Username must be at least 3 characters';
+    }
+    if (!email.trim()) errs.email = 'Email is required';
+    else if (!isValidEmail(email)) errs.email = 'Enter a valid email address';
+    if (!password) errs.password = 'Password is required';
+    else if (isSignup) {
+      const issues = getPasswordIssues(password);
+      if (issues.length) errs.password = issues[0].replace(/\.$/, '');
+    }
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
-    setFormError(null);
+    if (!validateFields()) return;
 
-    if (tab === 'login') {
-      const nextErrors: typeof errors = {};
-      const emailErr = validateEmail(email);
-      const passwordErr = validatePasswordRequired(password);
-      if (emailErr) nextErrors.email = emailErr;
-      if (passwordErr) nextErrors.password = passwordErr;
-      if (Object.keys(nextErrors).length > 0) { setErrors(nextErrors); return; }
-      setErrors({});
-
-      setSubmitting(true);
-      try {
+    setFormError('');
+    setSubmitting(true);
+    try {
+      if (tab === 'login') {
         await signIn(email, password);
-      } catch (err: unknown) {
-        const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-        if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
-          setErrors({ password: 'Email or password is incorrect' });
-        } else {
-          setFormError(friendlyAuthError(err));
-        }
-      } finally {
-        setSubmitting(false);
-      }
-    } else {
-      const nextErrors: typeof errors = {};
-      if (!username.trim()) nextErrors.username = 'Username is required';
-      else if (username.trim().length < 3 || username.trim().length > 24) nextErrors.username = 'Username must be 3–24 characters';
-      else if (!/^[a-zA-Z0-9_]+$/.test(username.trim())) nextErrors.username = 'Username can only contain letters, numbers, and underscore';
-      const emailErr = validateEmail(email);
-      if (emailErr) nextErrors.email = emailErr;
-      const passwordErr = validateSignupPassword(password);
-      if (passwordErr) nextErrors.password = passwordErr;
-      if (Object.keys(nextErrors).length > 0) { setErrors(nextErrors); return; }
-      setErrors({});
-
-      setSubmitting(true);
-      try {
+      } else {
         await signUp(email, password, username.trim(), role as 'reader' | 'translator');
         toast.success('Account created! Signing you in…');
-      } catch (err: unknown) {
-        const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-        if (msg.includes('user already registered') || msg.includes('already been registered') || msg.includes('already registered')) {
-          setErrors({ email: 'Email is already registered' });
-        } else {
-          setFormError(friendlyAuthError(err));
-        }
-      } finally {
-        setSubmitting(false);
       }
+    } catch (err: unknown) {
+      setFormError(friendlyAuthError(err));
+    } finally {
+      setSubmitting(false);
     }
   }
+
+  const showPwFeedback = isSignup && password.length > 0;
 
   if (loading) {
     return (
@@ -234,11 +193,11 @@ export default function AuthPage() {
                 <input
                   type="text"
                   value={username}
-                  onChange={(e) => { setUsername(sanitizeText(e.target.value)); setErrors((prev) => ({ ...prev, username: undefined })); }}
+                  onChange={(e) => { setUsername(sanitizeText(e.target.value)); setFieldErrors((f) => ({ ...f, username: undefined })); }}
                   placeholder="Your name"
-                  className={inputCls(!!errors.username)}
+                  className={clsx(inputCls, fieldErrors.username && errorBorderCls)}
                 />
-                {errors.username && <p className="mt-1 text-sm text-red-400">{errors.username}</p>}
+                {fieldErrors.username && <p className="text-xs text-red-500 dark:text-red-400">{fieldErrors.username}</p>}
               </div>
             )}
 
@@ -248,12 +207,12 @@ export default function AuthPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => { setEmail(sanitizeEmail(e.target.value)); setErrors((prev) => ({ ...prev, email: undefined })); }}
+                onChange={(e) => { setEmail(sanitizeEmail(e.target.value)); setFieldErrors((f) => ({ ...f, email: undefined })); }}
                 placeholder="you@example.com"
-                className={inputCls(!!errors.email)}
+                className={clsx(inputCls, fieldErrors.email && errorBorderCls)}
                 autoComplete="email"
               />
-              {errors.email && <p className="mt-1 text-sm text-red-400">{errors.email}</p>}
+              {fieldErrors.email && <p className="text-xs text-red-500 dark:text-red-400">{fieldErrors.email}</p>}
             </div>
 
             {/* Password */}
@@ -263,9 +222,9 @@ export default function AuthPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setErrors((prev) => ({ ...prev, password: undefined })); }}
+                  onChange={(e) => { setPassword(e.target.value); setFieldErrors((f) => ({ ...f, password: undefined })); }}
                   placeholder="••••••••"
-                  className={clsx(inputCls(!!errors.password), 'pr-10')}
+                  className={clsx(inputCls, 'pr-10', fieldErrors.password && errorBorderCls)}
                   autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
                 />
                 <button
@@ -276,8 +235,23 @@ export default function AuthPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {fieldErrors.password && <p className="text-xs text-red-500 dark:text-red-400">{fieldErrors.password}</p>}
 
-              {errors.password && <p className="mt-1 text-sm text-red-400">{errors.password}</p>}
+              {showPwFeedback && (
+                <ul className="mt-2 space-y-1 pl-1">
+                  {([
+                    { label: 'At least 8 characters', ok: password.length >= 8 },
+                    { label: 'Uppercase letter', ok: /[A-Z]/.test(password) },
+                    { label: 'Number', ok: /[0-9]/.test(password) },
+                    { label: 'Special character (!@#$…)', ok: /[^A-Za-z0-9]/.test(password) },
+                  ] as { label: string; ok: boolean }[]).map(({ label, ok }) => (
+                    <li key={label} className={`flex items-center gap-2 text-xs ${ok ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                      <span className="text-base leading-none">{ok ? '✓' : '○'}</span>
+                      {label}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {/* Role picker – signup only */}
@@ -289,7 +263,7 @@ export default function AuthPage() {
                     <button
                       key={r}
                       type="button"
-                      onClick={() => { setRole(r); setErrors((prev) => ({ ...prev, role: undefined })); }}
+                      onClick={() => setRole(r)}
                       className={clsx(
                         'flex-1 py-2 rounded-xl text-sm font-medium capitalize border transition-colors',
                         role === r
@@ -302,7 +276,6 @@ export default function AuthPage() {
                     </button>
                   ))}
                 </div>
-                {errors.role && <p className="mt-1 text-sm text-red-400">{errors.role}</p>}
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {role === 'reader'
                     ? 'Readers browse, read, OCR-translate, and build a Word Vault.'
@@ -311,9 +284,9 @@ export default function AuthPage() {
               </div>
             )}
 
-            {/* Form-level API error */}
+            {/* API-level error */}
             {formError && (
-              <p className="text-sm text-red-400 text-center -mt-1">{formError}</p>
+              <p className="text-xs text-red-500 dark:text-red-400 text-center -mb-1">{formError}</p>
             )}
 
             {/* Submit */}
@@ -337,11 +310,7 @@ export default function AuthPage() {
   );
 }
 
-function inputCls(hasError: boolean) {
-  return [
-    'w-full px-4 py-3 rounded-xl bg-white dark:bg-white/5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm focus:outline-none transition-colors border',
-    hasError
-      ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500/30'
-      : 'border-slate-200 dark:border-white/15 focus:border-indigo-400 dark:focus:border-indigo-500',
-  ].join(' ');
-}
+const inputCls =
+  'w-full px-4 py-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors';
+
+const errorBorderCls = '!border-red-400 dark:!border-red-500';

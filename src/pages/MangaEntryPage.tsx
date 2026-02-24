@@ -1,17 +1,16 @@
 import { useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, X } from 'lucide-react';
+import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, ImageIcon, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { fetchMangaById, updateManga, deleteManga } from '@/services/manga';
 import { deleteMangaCover } from '@/services/storageCovers';
-import { fetchChaptersByManga, uploadCbzChapter } from '@/services/chapters';
+import { fetchChaptersByManga, uploadChapter } from '@/services/chapters';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorState } from '@/components/ErrorState';
 import { EmptyState } from '@/components/EmptyState';
 import { Modal } from '@/components/Modal';
 import { ChapterUploadForm } from '@/components/ChapterUploadForm';
-import { NoCoverPlaceholder } from '@/components/NoCoverPlaceholder';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { formatDistanceToNow, formatDate } from '@/lib/dateUtils';
@@ -30,12 +29,30 @@ export default function MangaEntryPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editGenres, setEditGenres] = useState<string[]>([]);
-  const [editGenreInput, setEditGenreInput] = useState('');
-  const editGenreInputRef = useRef<HTMLInputElement>(null);
   const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
   const [editCoverPreview, setEditCoverPreview] = useState<string | null>(null);
   const [removeCover, setRemoveCover] = useState(false);
   const editCoverRef = useRef<HTMLInputElement>(null);
+  const [editGenreInput, setEditGenreInput] = useState('');
+
+  function addEditGenre(raw: string) {
+    const tag = raw.trim();
+    if (tag) setEditGenres((prev) => prev.includes(tag) ? prev : [...prev, tag]);
+    setEditGenreInput('');
+  }
+
+  function removeEditGenre(genre: string) {
+    setEditGenres((prev) => prev.filter((g) => g !== genre));
+  }
+
+  function handleEditGenreKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addEditGenre(editGenreInput);
+    } else if (e.key === 'Backspace' && editGenreInput === '' && editGenres.length > 0) {
+      setEditGenres((prev) => prev.slice(0, -1));
+    }
+  }
 
   // Delete state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -61,7 +78,7 @@ export default function MangaEntryPage() {
   });
 
   const uploadChapterMutation = useMutation({
-    mutationFn: (data: ChapterFormData) => uploadCbzChapter(data, id!, user!.id),
+    mutationFn: (data: ChapterFormData) => uploadChapter(data, id!),
     onSuccess: ({ chapter }) => {
       queryClient.invalidateQueries({ queryKey: ['chapters', id] });
       setShowChapterModal(false);
@@ -71,7 +88,7 @@ export default function MangaEntryPage() {
   });
 
   const isOwner = !!user && manga?.owner_id === user.id;
-  // Owners of any manga (shared or private) can manage chapters
+  // Any owner can upload chapters — translators to shared, readers to private
   const canUploadChapter = isOwner;
 
   // Edit mutation
@@ -82,7 +99,7 @@ export default function MangaEntryPage() {
         {
           title: editTitle.trim(),
           description: editDescription.trim(),
-          genre: editGenres.length > 0 ? editGenres : null,
+          genres: editGenres,
           ...(removeCover ? { cover_url: null } : {}),
         },
         manga!.owner_id,
@@ -122,11 +139,11 @@ export default function MangaEntryPage() {
     if (!manga) return;
     setEditTitle(manga.title);
     setEditDescription(manga.description ?? '');
-    setEditGenres(manga.genre ?? []);
-    setEditGenreInput('');
+    setEditGenres(manga.genres ?? []);
     setEditCoverFile(null);
     setEditCoverPreview(null);
     setRemoveCover(false);
+    setEditGenreInput('');
     setShowEditModal(true);
   }
 
@@ -163,45 +180,54 @@ export default function MangaEntryPage() {
       {/* Back link */}
       <Link
         to={isTranslator ? '/translator' : '/reader'}
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors mb-6"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Dashboard
       </Link>
 
       {/* Manga header */}
-      <div className="flex flex-col items-center sm:items-start sm:flex-row gap-6 mb-10">
+      <div className="flex flex-col sm:flex-row gap-6 mb-10">
         {/* Cover */}
-        {manga.cover_url ? (
-          <div className="shrink-0 w-36 sm:w-48 max-w-[200px]">
+        <div className="shrink-0 w-36 sm:w-44">
+          {manga.cover_url ? (
             <img
-              src={`${manga.cover_url}?t=${encodeURIComponent(manga.updated_at)}`}
+              src={manga.cover_url}
               alt={manga.title}
-              className="w-full h-auto object-contain rounded-xl shadow-2xl"
+              className="w-full aspect-[3/4] object-cover rounded-xl shadow-2xl"
             />
-          </div>
-        ) : (
-          <NoCoverPlaceholder className="shrink-0 w-36 sm:w-48 max-w-[200px] aspect-[2/3]" />
-        )}
+          ) : (
+            <div className="w-full aspect-[3/4] rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 flex flex-col items-center justify-center gap-2">
+              <ImageIcon className="h-10 w-10 text-gray-400 dark:text-gray-600" />
+              <span className="text-xs text-gray-500 dark:text-gray-500 font-medium">No Cover</span>
+            </div>
+          )}
+        </div>
 
         {/* Metadata */}
-        <div className="flex flex-col gap-3 min-w-0">
+        <div className="flex flex-col gap-3">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white leading-tight">
             {manga.title}
           </h1>
           {manga.description && (
-            <p className="text-sm text-slate-600 dark:text-gray-400 w-full max-w-full leading-relaxed break-words overflow-hidden">{manga.description}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 max-w-xl leading-relaxed">{manga.description}</p>
           )}
-          {manga.genre && manga.genre.length > 0 && (
+
+          {/* Genre Tags */}
+          {manga.genres && manga.genres.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {manga.genre.map((g) => (
-                <span key={g} className="px-2 py-0.5 rounded-md bg-indigo-500/10 dark:bg-white/5 text-indigo-700 dark:text-gray-400 border border-indigo-200 dark:border-white/10 text-xs font-medium">
-                  {g}
+              {manga.genres.map((genre) => (
+                <span
+                  key={genre}
+                  className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30"
+                >
+                  {genre}
                 </span>
               ))}
             </div>
           )}
-          <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-gray-500">
+
+          <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-500">
             <span className="flex items-center gap-1">
               <Hash className="h-3 w-3" />
               {chapters.length} chapter{chapters.length !== 1 ? 's' : ''}
@@ -211,11 +237,11 @@ export default function MangaEntryPage() {
               Updated {formatDate(manga.updated_at)}
             </span>
             {manga.visibility === 'private' ? (
-              <span className="px-1.5 py-0.5 rounded-md bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 font-semibold tracking-wide">
+              <span className="px-1.5 py-0.5 rounded-md bg-yellow-100 dark:bg-yellow-400/20 text-yellow-700 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-400/40 font-semibold tracking-wide">
                 Private
               </span>
             ) : (
-              <span className="px-1.5 py-0.5 rounded-md bg-indigo-400/20 text-indigo-300 border border-indigo-400/40 font-semibold tracking-wide">
+              <span className="px-1.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-400/20 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-400/40 font-semibold tracking-wide">
                 Shared
               </span>
             )}
@@ -228,7 +254,7 @@ export default function MangaEntryPage() {
                 className="flex items-center gap-2 w-fit px-4 py-2 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
               >
                 <Upload className="h-4 w-4" />
-                Add Chapter
+                Upload / Update Chapter
               </button>
             )}
             {isOwner && (
@@ -255,7 +281,7 @@ export default function MangaEntryPage() {
 
       {/* Chapter List */}
       <div>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-indigo-400" />
           Chapters
         </h2>
@@ -274,7 +300,7 @@ export default function MangaEntryPage() {
             }
             action={
               canUploadChapter
-                ? { label: 'Add Chapter', onClick: () => setShowChapterModal(true) }
+                ? { label: 'Upload Chapter', onClick: () => setShowChapterModal(true) }
                 : undefined
             }
           />
@@ -284,22 +310,22 @@ export default function MangaEntryPage() {
               <Link
                 key={ch.id}
                 to={`/read/${ch.id}`}
-                className="glass rounded-xl border border-slate-200/80 dark:border-white/10 hover:border-indigo-500/40 px-4 py-3 flex items-center gap-4 transition-all hover:shadow-lg group"
+                className="bg-white dark:bg-white/5 backdrop-blur-md rounded-xl border border-gray-200 dark:border-white/10 hover:border-indigo-500/40 px-4 py-3 flex items-center gap-4 transition-all hover:shadow-lg group"
               >
-                <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-bold text-sm shrink-0 group-hover:bg-indigo-500/30 transition-colors">
+                <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-300 font-bold text-sm shrink-0 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-500/30 transition-colors">
                   {ch.chapter_number}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-gray-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors">
                     Chapter {ch.chapter_number}
                     {ch.title ? ` — ${ch.title}` : ''}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-gray-500 flex items-center gap-1 mt-0.5">
+                  <p className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1 mt-0.5">
                     <Clock className="h-3 w-3" />
                     {formatDistanceToNow(ch.updated_at)} ago
                   </p>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors shrink-0">
+                <div className="flex items-center gap-1 text-xs text-indigo-400 group-hover:text-indigo-300 transition-colors shrink-0">
                   <BookOpen className="h-3.5 w-3.5" />
                   Read
                 </div>
@@ -333,30 +359,26 @@ export default function MangaEntryPage() {
           className="flex flex-col gap-4"
         >
           {/* Cover preview / picker */}
-          <div className="flex items-center gap-3">
-            {/* Thumbnail — cover or placeholder */}
-            <div className="shrink-0 w-20 aspect-[3/4] rounded-xl overflow-hidden">
-              {editCoverPreview ? (
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 w-24 aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center">
+              {removeCover ? (
+                <span className="text-xs text-slate-400 dark:text-gray-500 text-center p-2">No cover</span>
+              ) : editCoverPreview ? (
                 <img src={editCoverPreview} alt="New cover" className="w-full h-full object-cover" />
-              ) : (manga?.cover_url && !removeCover) ? (
-                <img src={`${manga.cover_url}?t=${encodeURIComponent(manga.updated_at)}`} alt="Current cover" className="w-full h-full object-cover" />
+              ) : manga?.cover_url ? (
+                <img src={manga.cover_url} alt="Current cover" className="w-full h-full object-cover" />
               ) : (
-                <NoCoverPlaceholder className="w-full h-full rounded-xl" />
+                <ImageIcon className="h-6 w-6 text-slate-400 dark:text-gray-600" />
               )}
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => editCoverRef.current?.click()}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-gray-300 transition-colors"
               >
                 <Upload className="h-3.5 w-3.5" />
-                {editCoverFile
-                  ? 'Change cover'
-                  : (manga?.cover_url && !removeCover)
-                    ? 'Change cover'
-                    : 'Upload cover (optional)'
-                }
+                {editCoverFile ? 'Change' : 'Upload new cover'}
               </button>
               {(manga?.cover_url || editCoverFile) && !removeCover && (
                 <button
@@ -378,70 +400,43 @@ export default function MangaEntryPage() {
             onChange={(e) => setEditTitle(e.target.value)}
             placeholder="Manga Title *"
             required
-            className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+            className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-gray-300 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
           />
           <textarea
             value={editDescription}
             onChange={(e) => setEditDescription(e.target.value)}
             placeholder="Description (optional)"
             rows={3}
-            className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+            className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-gray-300 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors resize-none"
           />
 
-          {/* Genre chips */}
-          <div className="flex flex-col gap-1.5">
-            <div
-              className="flex flex-wrap gap-1.5 min-h-[42px] w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-sm transition-colors focus-within:border-indigo-500 cursor-text"
-              onClick={() => editGenreInputRef.current?.focus()}
-            >
-              {editGenres.map((g) => (
+          {/* Genre picker */}
+          <div>
+            <div className="flex flex-wrap gap-1.5 w-full px-3 py-2 rounded-xl border transition-colors min-h-[42px] bg-slate-100 dark:bg-white/5 border-gray-300 dark:border-white/15 focus-within:border-indigo-500">
+              {editGenres.map((genre) => (
                 <span
-                  key={g}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-white/8 border border-slate-200 dark:border-white/15 text-slate-700 dark:text-gray-300 text-xs font-medium"
+                  key={genre}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30"
                 >
-                  {g}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setEditGenres((prev) => prev.filter((x) => x !== g)); }}
-                    className="text-gray-400 hover:text-gray-100 transition-colors leading-none"
-                    aria-label={`Remove ${g}`}
-                  >
+                  {genre}
+                  <button type="button" onClick={() => removeEditGenre(genre)} className="hover:opacity-75 transition-opacity">
                     <X className="h-3 w-3" />
                   </button>
                 </span>
               ))}
               <input
-                ref={editGenreInputRef}
                 type="text"
                 value={editGenreInput}
                 onChange={(e) => setEditGenreInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    const tag = editGenreInput.trim().replace(/,+$/, '').trim();
-                    if (tag) {
-                      const norm = tag.charAt(0).toUpperCase() + tag.slice(1);
-                      if (!editGenres.includes(norm)) setEditGenres((g) => [...g, norm]);
-                      setEditGenreInput('');
-                    }
-                  } else if (e.key === 'Backspace' && editGenreInput === '' && editGenres.length > 0) {
-                    setEditGenres((g) => g.slice(0, -1));
-                  }
-                }}
-                onBlur={() => {
-                  const tag = editGenreInput.trim().replace(/,+$/, '').trim();
-                  if (tag) {
-                    const norm = tag.charAt(0).toUpperCase() + tag.slice(1);
-                    if (!editGenres.includes(norm)) setEditGenres((g) => [...g, norm]);
-                    setEditGenreInput('');
-                  }
-                }}
+                onKeyDown={handleEditGenreKeyDown}
+                onBlur={() => addEditGenre(editGenreInput)}
                 placeholder={editGenres.length === 0 ? 'Genres — type & press Enter' : ''}
-                className="flex-1 min-w-[120px] bg-transparent text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:outline-none text-sm"
+                className="flex-1 min-w-[140px] bg-transparent text-sm text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 outline-none"
               />
             </div>
-            <p className="text-xs text-slate-400 dark:text-gray-600">Press Enter or comma to add. Backspace removes the last tag.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Press Enter or comma to add. Backspace removes the last one.</p>
           </div>
+
           <button
             type="submit"
             disabled={editMutation.isPending || !editTitle.trim()}
@@ -462,16 +457,8 @@ export default function MangaEntryPage() {
           <p className="text-sm text-slate-600 dark:text-gray-400">
             Are you sure you want to delete{' '}
             <span className="font-semibold text-slate-900 dark:text-white">{manga?.title}</span>?
+            This will permanently remove the manga and its cover image. Chapters are not deleted.
           </p>
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 flex flex-col gap-1">
-            <p className="font-semibold">The following will be permanently deleted:</p>
-            <ul className="list-disc list-inside space-y-0.5 text-red-300">
-              <li>The manga record and metadata</li>
-              <li>The cover image from storage</li>
-              <li>All associated chapter files (.cbz) from the chapters bucket</li>
-            </ul>
-            <p className="mt-1 text-xs text-red-400/70">This action cannot be undone.</p>
-          </div>
           <div className="flex gap-3 justify-end">
             <button
               onClick={() => setShowDeleteConfirm(false)}
