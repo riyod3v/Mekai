@@ -105,7 +105,15 @@ export async function uploadChapter(
 
 /**
  * Upload a single .cbz/.zip archive for a chapter.
- * Upserts the chapter record and stores the public URL in the `cbz_url` column.
+ *
+ * Phase order (strict):
+ *   1. Verify caller is the manga owner (client-side guard before any DB write).
+ *   2. Upload the archive to the 'chapters' storage bucket.
+ *      → If the upload fails for any reason, abort immediately with a
+ *        "Storage Upload Failed" message. The DB is never touched.
+ *   3. Only after a successful upload, upsert the chapter record using only
+ *      the four columns that exist in the table: manga_id, chapter_number,
+ *      title, cbz_url.
  */
 export async function uploadCbzChapter(
   formData: ChapterFormData,
@@ -114,51 +122,86 @@ export async function uploadCbzChapter(
 ): Promise<{ chapter: Chapter }> {
   if (!formData.cbzFile) throw new Error('No .cbz file provided.');
 
-  // Verify ownership before any insert — prevents RLS "new row violates
-  // row-level security policy" errors when the caller is not the manga owner.
+  // ── Diagnostic ──────────────────────────────────────────────
+  console.log('[uploadCbzChapter] mangaId arg :', mangaId);
+  console.log('[uploadCbzChapter] uploaderId  :', uploaderId);
+
+  // ── Phase 1: Ownership check (client-side RLS pre-guard) ────
+  // Also lets us compare the DB's manga.id against the mangaId arg to catch
+  // any URL-param vs DB-row mismatch before we build the storage path.
   const { data: mangaRow, error: mangaFetchErr } = await supabase
     .from('manga')
-    .select('owner_id')
+    .select('id, owner_id')
     .eq('id', mangaId)
     .single();
+
   if (mangaFetchErr || !mangaRow) {
+    console.error('[uploadCbzChapter] manga fetch error:', mangaFetchErr);
     throw new Error('Manga not found or access denied.');
   }
+
+  console.log('[uploadCbzChapter] DB manga.id  :', mangaRow.id);
+  console.log('[uploadCbzChapter] DB owner_id  :', mangaRow.owner_id);
+  console.log('[uploadCbzChapter] IDs match?   :', mangaRow.id === mangaId);
+
   if (mangaRow.owner_id !== uploaderId) {
     throw new Error('You do not have permission to upload chapters to this manga.');
   }
 
-  const ext = formData.cbzFile.name.split('.').pop() ?? 'cbz';
-  const storagePath = `${uploaderId}/${mangaId}/${formData.chapterNumber}-${uuidv4()}.${ext}`;
+  // Use the DB-confirmed manga.id for the storage path so it is guaranteed
+  // to match the actual row, even if the URL param had extra whitespace etc.
+  const confirmedMangaId = mangaRow.id;
 
-  // Upload the archive
+  // ── Phase 2: Storage upload (must succeed before any DB write) ──
+  const bucketName = BUCKETS.CHAPTERS; // 'chapters' (all lowercase)
+  const ext = formData.cbzFile.name.split('.').pop() ?? 'cbz';
+  const storagePath = `${uploaderId}/${confirmedMangaId}/${formData.chapterNumber}-${uuidv4()}.${ext}`;
+
+  console.log('[uploadCbzChapter] bucket      :', bucketName);
+  console.log('[uploadCbzChapter] storagePath :', storagePath);
+
   const { error: uploadErr } = await supabase.storage
-    .from(BUCKETS.CHAPTERS)
+    .from(bucketName)
     .upload(storagePath, formData.cbzFile, { upsert: true });
-  if (uploadErr) throw new Error(uploadErr.message);
+
+  if (uploadErr) {
+    // Abort entirely — the DB is never touched after a storage failure.
+    console.error('[uploadCbzChapter] ❌ Storage upload failed:', uploadErr);
+    throw new Error(`File Upload Failed (Storage): ${uploadErr.message}`);
+  }
+
+  console.log('[uploadCbzChapter] ✅ Storage upload succeeded.');
 
   const { data: urlData } = supabase.storage
-    .from(BUCKETS.CHAPTERS)
+    .from(bucketName)
     .getPublicUrl(storagePath);
 
-  // Upsert the chapter record
+  console.log('[uploadCbzChapter] public URL  :', urlData.publicUrl);
+
+  // ── Phase 3: DB upsert — only the four known table columns ──
+  // Do NOT include uploaded_by, updated_at, or any column that does not
+  // exist in the schema; extra fields cause the upsert to fail (and can
+  // surface as a misleading RLS error).
   const { data: chapterData, error: chapterErr } = await supabase
     .from('chapters')
     .upsert(
       {
-        manga_id: mangaId,
+        manga_id: confirmedMangaId,
         chapter_number: formData.chapterNumber,
         title: formData.title || null,
-        uploaded_by: uploaderId,
         cbz_url: urlData.publicUrl,
-        updated_at: new Date().toISOString(),
       },
       { onConflict: 'manga_id,chapter_number' }
     )
     .select()
     .single();
-  if (chapterErr) throw new Error(chapterErr.message);
 
+  if (chapterErr) {
+    console.error('[uploadCbzChapter] ❌ DB upsert error:', chapterErr);
+    throw new Error(chapterErr.message);
+  }
+
+  console.log('[uploadCbzChapter] ✅ Chapter record upserted:', chapterData);
   return { chapter: chapterData as Chapter };
 }
 
