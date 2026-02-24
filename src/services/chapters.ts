@@ -72,20 +72,22 @@ export async function uploadChapterCbz(
   // 4. Insert into chapters table (owner_id must match auth.uid() for RLS)
   const { data, error: dbErr } = await supabase
     .from('chapters')
-    .upsert(
-      {
-        manga_id: mangaId,
-        chapter_number: chapterNum,
-        title: title.trim() || null,
-        cbz_url: publicUrl,
-        owner_id: user.id,
-      },
-      { onConflict: 'manga_id,chapter_number' }
-    )
+    .insert({
+      manga_id: mangaId,
+      chapter_number: chapterNum,
+      title: title.trim() || null,
+      cbz_url: publicUrl,
+      owner_id: user.id,
+    })
     .select()
     .single();
 
-  if (dbErr) throw dbErr;
+  if (dbErr) {
+    if (dbErr.code === '23505') {
+      throw new Error(`Chapter ${chapterNum} already exists. Use Edit/Replace instead.`);
+    }
+    throw dbErr;
+  }
   return data as Chapter;
 }
 
