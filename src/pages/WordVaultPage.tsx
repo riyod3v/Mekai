@@ -4,8 +4,8 @@ import { Vault, Trash2, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWordVault, deleteFromWordVault } from '@/services/wordVault';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { EmptyState } from '@/components/EmptyState';
+import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
+import { EmptyState } from '@/ui/components/EmptyState';
 import { formatDate } from '@/lib/dateUtils';
 
 export default function WordVaultPage() {

@@ -3,28 +3,28 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
-  Scan, History, X,
+  Scan, History, X, List, Square,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
 import { fetchChapterById, fetchChaptersByManga } from '@/services/chapters';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { ErrorState } from '@/components/ErrorState';
-import { OCRSelectionLayer, type SelectionRect } from '@/components/OCRSelectionLayer';
-import { TranslationOverlay } from '@/components/TranslationOverlay';
-import { HistoryPanel } from '@/components/HistoryPanel';
-import { Drawer } from '@/components/Drawer';
+import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
+import { ErrorState } from '@/ui/components/ErrorState';
+import { OCRSelectionLayer, type SelectionRect } from '@/ui/components/OCRSelectionLayer';
+import { TranslationOverlay } from '@/ui/components/TranslationOverlay';
+import { HistoryPanel } from '@/ui/components/HistoryPanel';
+import { Drawer } from '@/ui/components/Drawer';
 import { ocrFromImageElement } from '@/lib/ocr';
 import { toRomaji } from '@/lib/romaji';
-import { translateText } from '@/services/translation';
+import { translateJapaneseToEnglish } from '@/lib/translate';
 import {
   useTranslationHistory,
   useAddTranslationHistory,
   useDeleteTranslationHistory,
 } from '@/hooks/useTranslationHistory';
-import type { RegionBox, TranslationHistoryRow } from '@/types';
+import type { RegionBox, TranslationHistoryRow, ReadingMode } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -174,6 +174,22 @@ export default function MangaReaderPage() {
   const [extractError, setExtractError] = useState<string | null>(null);
   const prevUrls = useRef<string[]>([]);
 
+  // ── Reading mode (persisted) ──────────────────────────────
+  const [readingMode, setReadingMode] = useState<ReadingMode>(() =>
+    (localStorage.getItem('mekai-reading-mode') as ReadingMode) ?? 'scroll'
+  );
+  const [currentPage, setCurrentPage] = useState(0);
+
+  function toggleReadingMode() {
+    setReadingMode((prev) => {
+      const next: ReadingMode = prev === 'scroll' ? 'page' : 'scroll';
+      localStorage.setItem('mekai-reading-mode', next);
+      return next;
+    });
+    setCurrentPage(0);
+    setOcr(null);
+  }
+
   // ── OCR + history state ────────────────────────────────────
   const [selectionMode, setSelectionMode] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -224,6 +240,7 @@ export default function MangaReaderPage() {
     setExtracting(true);
     setOcr(null);
     setOverlays([]);
+    setCurrentPage(0);
 
     (async () => {
       try {
@@ -274,7 +291,13 @@ export default function MangaReaderPage() {
       setOcr({ phase: 'running', pageIndex, selection: sel, error: null });
       try {
         const ocrText = await ocrFromImageElement(imgEl, sel.region);
-        const { translated } = await translateText(ocrText);
+        if (!ocrText.trim()) {
+          setOcr((prev) =>
+            prev ? { ...prev, phase: 'error', error: 'No text detected in this region.' } : null,
+          );
+          return;
+        }
+        const translated = await translateJapaneseToEnglish(ocrText);
         const romaji = toRomaji(ocrText);
         const row = await addHistory.mutateAsync({
           mangaId: chapter.manga_id,
@@ -310,15 +333,44 @@ export default function MangaReaderPage() {
     [deleteHistory],
   );
 
+  // ── Keyboard navigation (page mode only) ─────────────────
+  useEffect(() => {
+    if (readingMode !== 'page' || images.length === 0) return;
+    function onKey(e: KeyboardEvent) {
+      // Don't hijack when typing in an input / textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        setCurrentPage((p) => Math.min(p + 1, images.length - 1));
+        setOcr(null);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        setCurrentPage((p) => Math.max(p - 1, 0));
+        setOcr(null);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readingMode, images.length]);
+
   // ── History highlight ──────────────────────────────────────
   const handleHighlight = useCallback((entry: TranslationHistoryRow) => {
-    document
-      .querySelector(`[data-page-index="${entry.page_index}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setHighlightId(entry.id);
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => setHighlightId(null), 3000);
-  }, []);
+    if (readingMode === 'page') {
+      // Switch to the right page, then highlight after render tick
+      setCurrentPage(entry.page_index);
+      setOcr(null);
+      setTimeout(() => {
+        setHighlightId(entry.id);
+        if (highlightTimer.current) clearTimeout(highlightTimer.current);
+        highlightTimer.current = setTimeout(() => setHighlightId(null), 3000);
+      }, 80);
+    } else {
+      document
+        .querySelector(`[data-page-index="${entry.page_index}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightId(entry.id);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => setHighlightId(null), 3000);
+    }
+  }, [readingMode]);
 
   // ── Toggle selection mode ──────────────────────────────────
   function toggleSelectionMode() {
@@ -424,6 +476,20 @@ export default function MangaReaderPage() {
           <History className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">History</span>
         </button>
+
+        {/* Reading mode toggle */}
+        <button
+          onClick={toggleReadingMode}
+          title={readingMode === 'scroll' ? 'Switch to page mode' : 'Switch to scroll mode'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+        >
+          {readingMode === 'scroll'
+            ? <Square className="h-3.5 w-3.5" />
+            : <List className="h-3.5 w-3.5" />}
+          <span className="hidden sm:inline">
+            {readingMode === 'scroll' ? 'Page' : 'Scroll'}
+          </span>
+        </button>
       </header>
 
       {/* ── Reading area ─────────────────────────────────────── */}
@@ -450,48 +516,121 @@ export default function MangaReaderPage() {
         )}
 
         {!extracting && !extractError && images.length > 0 && (
-          <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
-            {images.map((src, i) => (
+          readingMode === 'scroll' ? (
+            /* ── Scroll mode: all pages stacked vertically ── */
+            <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
+              {images.map((src, i) => (
+                <ReaderPageItem
+                  key={src}
+                  src={src}
+                  pageIndex={i}
+                  loading={i < 3 ? 'eager' : 'lazy'}
+                  selectionActive={selectionMode}
+                  onSelect={handlePageSelect}
+                  ocrState={ocr?.pageIndex === i ? ocr : null}
+                  onDismissOcr={() => setOcr(null)}
+                  overlays={overlays.filter((o) => o.pageIndex === i)}
+                  highlightId={highlightId}
+                  onDismissOverlay={handleDismissOverlay}
+                />
+              ))}
+
+              {/* End-of-chapter footer */}
+              <div className="w-full py-10 flex flex-col items-center gap-4 border-t border-white/10 mt-2">
+                <BookOpen className="h-6 w-6 text-indigo-400" />
+                <p className="text-sm text-gray-400">End of Chapter {chapter.chapter_number}</p>
+                <div className="flex gap-3">
+                  {nextChapter ? (
+                    <Link
+                      to={`/read/${nextChapter.id}`}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
+                    >
+                      Next: Chapter {nextChapter.chapter_number}
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/manga/${chapter.manga_id}`}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-sm font-medium transition-colors"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to Manga
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ── Page mode: one page at a time ── */
+            <div className="w-full max-w-3xl mx-auto flex flex-col items-center gap-4 py-4">
+              {/* Single page */}
               <ReaderPageItem
-                key={src}
-                src={src}
-                pageIndex={i}
-                loading={i < 3 ? 'eager' : 'lazy'}
+                key={images[currentPage]}
+                src={images[currentPage]}
+                pageIndex={currentPage}
+                loading="eager"
                 selectionActive={selectionMode}
                 onSelect={handlePageSelect}
-                ocrState={ocr?.pageIndex === i ? ocr : null}
+                ocrState={ocr?.pageIndex === currentPage ? ocr : null}
                 onDismissOcr={() => setOcr(null)}
-                overlays={overlays.filter((o) => o.pageIndex === i)}
+                overlays={overlays.filter((o) => o.pageIndex === currentPage)}
                 highlightId={highlightId}
                 onDismissOverlay={handleDismissOverlay}
               />
-            ))}
 
-            {/* End-of-chapter footer */}
-            <div className="w-full py-10 flex flex-col items-center gap-4 border-t border-white/10 mt-2">
-              <BookOpen className="h-6 w-6 text-indigo-400" />
-              <p className="text-sm text-gray-400">End of Chapter {chapter.chapter_number}</p>
-              <div className="flex gap-3">
-                {nextChapter ? (
-                  <Link
-                    to={`/read/${nextChapter.id}`}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
-                  >
-                    Next: Chapter {nextChapter.chapter_number}
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                ) : (
-                  <Link
-                    to={`/manga/${chapter.manga_id}`}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-sm font-medium transition-colors"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Manga
-                  </Link>
-                )}
+              {/* Page navigation bar */}
+              <div className="flex items-center gap-3 py-2">
+                <button
+                  onClick={() => { setCurrentPage((p) => Math.max(p - 1, 0)); setOcr(null); }}
+                  disabled={currentPage === 0}
+                  className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-white/10 hover:bg-white/15 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
+                </button>
+
+                <span className="text-sm text-gray-400 tabular-nums min-w-[5rem] text-center">
+                  {currentPage + 1} / {images.length}
+                </span>
+
+                <button
+                  onClick={() => { setCurrentPage((p) => Math.min(p + 1, images.length - 1)); setOcr(null); }}
+                  disabled={currentPage === images.length - 1}
+                  className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-white/10 hover:bg-white/15 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
+
+              {/* End-of-chapter footer — only shown on last page */}
+              {currentPage === images.length - 1 && (
+                <div className="w-full py-8 flex flex-col items-center gap-4 border-t border-white/10">
+                  <BookOpen className="h-6 w-6 text-indigo-400" />
+                  <p className="text-sm text-gray-400">End of Chapter {chapter.chapter_number}</p>
+                  <div className="flex gap-3">
+                    {nextChapter ? (
+                      <Link
+                        to={`/read/${nextChapter.id}`}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
+                      >
+                        Next: Chapter {nextChapter.chapter_number}
+                        <ChevronRight className="h-4 w-4" />
+                      </Link>
+                    ) : (
+                      <Link
+                        to={`/manga/${chapter.manga_id}`}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-sm font-medium transition-colors"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Manga
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )
         )}
       </main>
 
@@ -503,15 +642,13 @@ export default function MangaReaderPage() {
         side="right"
       >
         {chapterId && (
-          <div className="p-4">
-            <HistoryPanel
-              chapterId={chapterId}
-              onHighlight={(entry) => {
-                setHistoryOpen(false);
-                handleHighlight(entry);
-              }}
-            />
-          </div>
+          <HistoryPanel
+            chapterId={chapterId}
+            onHighlight={(entry) => {
+              setHistoryOpen(false);
+              handleHighlight(entry);
+            }}
+          />
         )}
       </Drawer>
     </div>

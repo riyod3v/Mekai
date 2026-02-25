@@ -1,52 +1,58 @@
--- ──────────────────────────────────────────────────────────────────────────────
--- translation_history — idempotent migration
--- Safe to re-run; DROP TABLE IF EXISTS ... CASCADE handles any prior version.
--- ──────────────────────────────────────────────────────────────────────────────
+-- ─────────────────────────────────────────────────────────────
+-- translation_history table
+-- Run this once in the Supabase SQL editor.
+-- ─────────────────────────────────────────────────────────────
 
--- 0. Ensure the uuid-ossp extension exists
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA extensions;
+-- Enable uuid generation if not already active
+create extension if not exists "uuid-ossp";
 
--- 1. Drop table and all dependent objects (old indexes, policies, etc.)
-DROP TABLE IF EXISTS public.translation_history CASCADE;
+-- ─── Table ───────────────────────────────────────────────────
 
--- 2. Recreate table with final schema
-CREATE TABLE public.translation_history (
-  id          uuid          PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-  user_id     uuid          NOT NULL REFERENCES public.profiles(id)  ON DELETE CASCADE,
-  manga_id    uuid          NOT NULL REFERENCES public.manga(id)      ON DELETE CASCADE,
-  chapter_id  uuid          NOT NULL REFERENCES public.chapters(id)   ON DELETE CASCADE,
-  -- 0-based page index matching the CBZ image array position
-  page_index  int           NOT NULL CHECK (page_index >= 0),
-  -- Normalised bounding box (all values 0..1)
-  region_x    float         NOT NULL CHECK (region_x >= 0 AND region_x <= 1),
-  region_y    float         NOT NULL CHECK (region_y >= 0 AND region_y <= 1),
-  region_w    float         NOT NULL CHECK (region_w  > 0 AND region_w  <= 1),
-  region_h    float         NOT NULL CHECK (region_h  > 0 AND region_h  <= 1),
-  ocr_text    text          NOT NULL,
-  translated  text          NOT NULL,
-  romaji      text          NULL,
-  created_at  timestamptz   NOT NULL DEFAULT now()
+create table if not exists public.translation_history (
+  id          uuid        primary key default uuid_generate_v4(),
+  user_id     uuid        not null default auth.uid()
+                          references public.profiles (id) on delete cascade,
+  chapter_id  uuid        not null
+                          references public.chapters (id) on delete cascade,
+  manga_id    uuid        not null
+                          references public.manga (id) on delete cascade,
+  page_index  integer     not null check (page_index >= 0),
+  region_x    float       not null check (region_x between 0 and 1),
+  region_y    float       not null check (region_y between 0 and 1),
+  region_w    float       not null check (region_w between 0 and 1),
+  region_h    float       not null check (region_h between 0 and 1),
+  ocr_text    text        not null,
+  translated  text        not null,
+  romaji      text,
+  created_at  timestamptz not null default now()
 );
 
--- 3. Indexes
-CREATE INDEX translation_history_user_created_idx
-  ON public.translation_history (user_id, created_at DESC);
+-- Index for the most common query pattern (history by chapter, newest first)
+create index if not exists translation_history_chapter_id_idx
+  on public.translation_history (chapter_id, created_at desc);
 
-CREATE INDEX translation_history_chapter_idx
-  ON public.translation_history (chapter_id, page_index);
+-- Index for per-user lookups
+create index if not exists translation_history_user_id_idx
+  on public.translation_history (user_id);
 
--- 4. Row-Level Security
-ALTER TABLE public.translation_history ENABLE ROW LEVEL SECURITY;
+-- ─── Row Level Security ───────────────────────────────────────
 
--- 5. Policies (DROP each by name first so re-runs are safe after the CASCADE above)
-CREATE POLICY "translation_history: owner select"
-  ON public.translation_history FOR SELECT
-  USING (auth.uid() = user_id);
+alter table public.translation_history enable row level security;
 
-CREATE POLICY "translation_history: owner insert"
-  ON public.translation_history FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+-- Users can only read their own history
+create policy "Users can view own translation history"
+  on public.translation_history
+  for select
+  using (auth.uid() = user_id);
 
-CREATE POLICY "translation_history: owner delete"
-  ON public.translation_history FOR DELETE
-  USING (auth.uid() = user_id);
+-- Users can only insert rows for themselves
+create policy "Users can insert own translation history"
+  on public.translation_history
+  for insert
+  with check (auth.uid() = user_id);
+
+-- Users can only delete their own rows
+create policy "Users can delete own translation history"
+  on public.translation_history
+  for delete
+  using (auth.uid() = user_id);

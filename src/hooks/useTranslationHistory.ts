@@ -3,7 +3,7 @@ import {
   fetchTranslationHistoryByChapter,
   createTranslationHistory,
   deleteTranslationHistory,
-} from '@/lib/translationHistory';
+} from '@/services/translationHistory';
 import type { TranslationHistoryRow, CreateTranslationHistoryInput, RegionBox } from '@/types';
 
 // Re-export the params type so callers don't need to import from lib

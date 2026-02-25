@@ -94,3 +94,9 @@ export async function deleteTranslationHistory(id: string): Promise<void> {
 
   if (error) throw new Error(error.message);
 }
+
+// ─── Canonical aliases (Task 2 spec names) ───────────────────
+
+export const fetchHistoryForChapter = fetchTranslationHistoryByChapter;
+export const addHistoryEntry        = createTranslationHistory;
+export const deleteHistoryEntry     = deleteTranslationHistory;

@@ -36,11 +36,17 @@ export function TranslationOverlay({
 
   return (
     <div style={style}>
+      {/*
+        container-type: inline-size enables cqw units for children.
+        The overlay div itself is sized by the percent-based `style` above,
+        so cqw resolves correctly against the bubble's actual pixel width.
+      */}
       <div
+        style={{ containerType: 'inline-size', width: '100%', height: '100%' }}
         className={clsx(
           // Base glass-style dark panel
-          'relative w-full h-full rounded-lg overflow-hidden',
-          'bg-slate-900/80 backdrop-blur-md border border-white/15 shadow-lg',
+          'relative rounded-lg overflow-hidden',
+          'bg-slate-900/82 backdrop-blur-md border border-white/15 shadow-lg',
           // Highlight ring when located from history
           highlighted && 'ring-2 ring-yellow-400 ring-offset-0 animate-pulse',
         )}
@@ -54,21 +60,25 @@ export function TranslationOverlay({
           <X className="h-2.5 w-2.5" />
         </button>
 
-        {/* Content */}
+        {/* Content — container query context is the outer div above */}
         <div
           className="w-full h-full flex flex-col items-center justify-center px-1.5 py-1 gap-0.5 cursor-pointer select-none overflow-hidden"
           onClick={() => romaji && setShowRomaji((v) => !v)}
         >
           {/* English translation — primary */}
-          <p className="text-center text-white font-medium leading-tight text-clamp overflow-hidden"
-            style={{ fontSize: 'clamp(7px, 1.8cqw, 13px)', lineHeight: 1.25 }}>
+          <p
+            className="text-center text-white font-medium leading-tight overflow-hidden"
+            style={{ fontSize: 'clamp(7px, 1.8cqw, 13px)', lineHeight: 1.25 }}
+          >
             {translated}
           </p>
 
           {/* Romaji — toggle on click */}
           {romaji && showRomaji && (
-            <p className="text-center text-indigo-300 leading-tight overflow-hidden"
-              style={{ fontSize: 'clamp(6px, 1.4cqw, 10px)', lineHeight: 1.2 }}>
+            <p
+              className="text-center text-indigo-300 leading-tight overflow-hidden"
+              style={{ fontSize: 'clamp(6px, 1.4cqw, 10px)', lineHeight: 1.2 }}
+            >
               {romaji}
             </p>
           )}

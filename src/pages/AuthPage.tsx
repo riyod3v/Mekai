@@ -4,7 +4,7 @@ import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { signIn, signUp, useAuth } from '@/hooks/useAuth';
 import { useThemeContext } from '@/context/ThemeContext';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import clsx from 'clsx';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

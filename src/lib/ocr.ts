@@ -102,3 +102,9 @@ export async function ocrFromImageElement(
     await worker.terminate();
   }
 }
+
+/**
+ * Alias for ocrFromImageElement — canonical export name for the OCR pipeline.
+ * @see ocrFromImageElement
+ */
+export const extractTextFromImage = ocrFromImageElement;

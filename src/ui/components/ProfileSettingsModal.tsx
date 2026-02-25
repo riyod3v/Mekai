@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getMyProfile, updateMyProfile } from '@/services/profiles';
 import type { Profile } from '@/types';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 
 interface Props {
   open: boolean;

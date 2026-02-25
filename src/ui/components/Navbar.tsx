@@ -3,7 +3,7 @@ import { BookMarked, Vault, BookOpen } from 'lucide-react';
 import { useAuth, signOut } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { useThemeContext } from '@/context/ThemeContext';
-import { ProfileDropdown } from '@/components/ProfileDropdown';
+import { ProfileDropdown } from '@/ui/components/ProfileDropdown';
 import toast from 'react-hot-toast';
 
 export function Navbar() {

@@ -2,14 +2,14 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 
-import { Navbar } from '@/components/Navbar';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { Navbar } from '@/ui/components/Navbar';
+import { ProtectedRoute } from '@/ui/components/ProtectedRoute';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
-import { FullPageLoader } from '@/components/LoadingSpinner';
+import { FullPageLoader } from '@/ui/components/LoadingSpinner';
 
-import AuthPage from '@/pages/Auth';
+import AuthPage from '@/pages/AuthPage';
 import ReaderDashboard from '@/pages/ReaderDashboard';
 import TranslatorDashboard from '@/pages/TranslatorDashboard';
 import MangaEntryPage from '@/pages/MangaEntryPage';
@@ -32,13 +32,16 @@ function AppRoutes() {
   const { role, isLoading: roleLoading } = useRole();
 
   const location = useLocation();
-  const isLanding = location.pathname === '/';
+  const hideNavbar =
+    location.pathname === '/' ||
+    location.pathname.startsWith('/read/') ||
+    location.pathname === '/auth';
 
   if (authLoading || (user && roleLoading)) return <FullPageLoader />;
 
   return (
     <>
-      {!isLanding && (
+      {!hideNavbar && (
         <Navbar />
       )}
       <Routes>
