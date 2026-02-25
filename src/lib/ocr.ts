@@ -1,8 +1,8 @@
 /**
  * Browser-side OCR utility using Tesseract.js.
  * Crops a normalised bounding-box region from an HTMLImageElement,
- * upscales it 2× for better recognition accuracy, then returns
- * the cleaned OCR text.
+ * upscales it 2× for better recognition accuracy, rotates tall
+ * (vertical-text) regions 90° CW, and returns the cleaned OCR text.
  */
 
 // ─── Types ────────────────────────────────────────────────────
@@ -23,11 +23,19 @@ const UPSCALE = 2;
 /** Default Tesseract language. Override per call if needed. */
 const DEFAULT_LANG = 'jpn';
 
+/** Threshold: if height > width * this factor, assume vertical text. */
+const VERTICAL_RATIO = 1.2;
+
+/** Tesseract PSM type (avoids eager import of the full module). */
+type PSM = import('tesseract.js').PSM;
+
 // ─── Helpers ─────────────────────────────────────────────────
 
 /**
  * Crops a region from an HTMLImageElement into an offscreen canvas,
  * upscaling by UPSCALE for better Tesseract accuracy.
+ * If the region is taller than wide (vertical text), the canvas is
+ * rotated 90° clockwise so Tesseract treats it as horizontal text.
  */
 function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
   const { naturalWidth: nw, naturalHeight: nh } = imgEl;
@@ -37,21 +45,44 @@ function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
   const cropW = Math.max(Math.round(bbox.w * nw), 1);
   const cropH = Math.max(Math.round(bbox.h * nh), 1);
 
+  const isVertical = cropH > cropW * VERTICAL_RATIO;
+
+  const scaledW = cropW * UPSCALE;
+  const scaledH = cropH * UPSCALE;
+
   const canvas = document.createElement('canvas');
-  canvas.width = cropW * UPSCALE;
-  canvas.height = cropH * UPSCALE;
+
+  if (isVertical) {
+    // After 90° CW rotation the dimensions swap
+    canvas.width = scaledH;
+    canvas.height = scaledW;
+  } else {
+    canvas.width = scaledW;
+    canvas.height = scaledH;
+  }
 
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get 2D canvas context for OCR crop.');
 
-  // Scale up while drawing so Tesseract gets a larger, cleaner image
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(
-    imgEl,
-    cropX, cropY, cropW, cropH,      // source rect (natural px)
-    0, 0, canvas.width, canvas.height // dest rect (upscaled)
-  );
+
+  if (isVertical) {
+    // Rotate 90° CW: translate to new origin, rotate, then draw
+    ctx.translate(canvas.width, 0);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(
+      imgEl,
+      cropX, cropY, cropW, cropH,
+      0, 0, scaledW, scaledH,
+    );
+  } else {
+    ctx.drawImage(
+      imgEl,
+      cropX, cropY, cropW, cropH,
+      0, 0, scaledW, scaledH,
+    );
+  }
 
   return canvas;
 }
@@ -93,10 +124,30 @@ export async function ocrFromImageElement(
   });
 
   try {
+    // Stable config: assume uniform block of text, preserve spaces
+    await worker.setParameters({
+      tessedit_pageseg_mode: '6' as PSM,
+      preserve_interword_spaces: '1',
+    });
+
     const {
       data: { text },
     } = await worker.recognize(canvas);
-    return cleanText(text);
+
+    let result = cleanText(text);
+
+    // If result is too short, retry with sparse-text mode (PSM 11)
+    if (result.length < 2) {
+      await worker.setParameters({
+        tessedit_pageseg_mode: '11' as PSM,
+      });
+      const {
+        data: { text: retryText },
+      } = await worker.recognize(canvas);
+      result = cleanText(retryText);
+    }
+
+    return result;
   } finally {
     // Always release the worker, even if OCR throws
     await worker.terminate();

@@ -19,7 +19,7 @@ export default function WordVaultPage() {
   } = useQuery({
     queryKey: ['word-vault', user?.id],
     enabled: !!user,
-    queryFn: () => fetchWordVault(user!.id),
+    queryFn: () => fetchWordVault(),
   });
 
   const deleteMutation = useMutation({

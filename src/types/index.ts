@@ -15,17 +15,6 @@ export interface Profile {
   updated_at: string;
 }
 
-// ─── DB row aliases (match schema column names exactly) ──────
-
-/** Alias for Page matching schema naming convention */
-export type PageRow = Page;
-
-/** Alias for TranslationHistory matching schema naming convention */
-export type TranslationHistoryRow = TranslationHistory;
-
-/** Alias for WordVaultEntry matching schema naming convention */
-export type WordVaultRow = WordVaultEntry;
-
 export type Visibility = 'shared' | 'private';
 
 export interface Manga {
@@ -38,7 +27,7 @@ export interface Manga {
   genres?: string[];
   created_at: string;
   updated_at: string;
-  // Joined field from chapters count (optional)
+  /** Joined field from chapters count (optional) */
   chapter_count?: number;
 }
 
@@ -61,6 +50,9 @@ export interface Page {
   created_at: string;
 }
 
+/** Alias for Page matching schema naming convention */
+export type PageRow = Page;
+
 /** A bounding box described as fractions (0–1) of image dimensions */
 export interface RegionBox {
   x: number;
@@ -69,49 +61,102 @@ export interface RegionBox {
   h: number;
 }
 
-export interface TranslationHistory {
+// ─── Translation History (per-user private) ──────────────────
+
+/** Row shape returned from `public.translation_history`. */
+export interface TranslationHistoryRow {
   id: string;
   user_id: string;
-  manga_id: string;
   chapter_id: string;
-  /** 0-based index into the CBZ image array */
   page_index: number;
-  /** Normalised bounding box — all values 0..1 */
-  region_x: number;
-  region_y: number;
-  region_w: number;
-  region_h: number;
+  /** JSONB column stored as { x, y, w, h } */
+  region: RegionBox;
   ocr_text: string;
   translated: string;
   romaji: string | null;
   created_at: string;
 }
 
+/** Params for inserting a new translation_history row. */
 export interface CreateTranslationHistoryInput {
-  manga_id: string;
   chapter_id: string;
-  /** 0-based index into the CBZ image array */
   page_index: number;
-  /** Normalised bounding box — all values 0..1 */
   region: RegionBox;
   ocr_text: string;
   translated: string;
   romaji?: string | null;
 }
 
+// ─── Chapter Translations (published, visible to readers) ────
+
+/** Row shape returned from `public.chapter_translations`. */
+export interface ChapterTranslationRow {
+  id: string;
+  chapter_id: string;
+  page_index: number;
+  region: RegionBox;
+  region_hash: string;
+  ocr_text: string;
+  translated: string;
+  romaji: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertChapterTranslationInput {
+  chapter_id: string;
+  page_index: number;
+  region: RegionBox;
+  region_hash: string;
+  ocr_text: string;
+  translated: string;
+  romaji?: string | null;
+}
+
+// ─── Word Vault (per-user bookmarks) ─────────────────────────
+
 export interface WordVaultEntry {
   id: string;
   user_id: string;
+  chapter_id: string | null;
+  page_index: number | null;
+  region: RegionBox | null;
   original: string;
   translated: string;
   romaji: string | null;
-  source_page_id: string | null;
   created_at: string;
+}
+
+export interface CreateWordVaultInput {
+  chapter_id?: string | null;
+  page_index?: number | null;
+  region?: RegionBox | null;
+  original: string;
+  translated: string;
+  romaji?: string | null;
+}
+
+/** Alias for backward-compat */
+export type WordVaultRow = WordVaultEntry;
+
+// ─── Reading Progress ────────────────────────────────────────
+
+export interface ReadingProgressRow {
+  user_id: string;
+  chapter_id: string;
+  last_page_index: number;
+  updated_at: string;
 }
 
 // ─── OCR / Reader ────────────────────────────────────────────
 
 export type ReadingMode = 'page' | 'scroll';
+
+/** Compute a stable hash key for a region (used in chapter_translations unique constraint). */
+export function regionHash(r: RegionBox): string {
+  return `${r.x.toFixed(4)}-${r.y.toFixed(4)}-${r.w.toFixed(4)}-${r.h.toFixed(4)}`;
+}
 
 // ─── Forms ───────────────────────────────────────────────────
 

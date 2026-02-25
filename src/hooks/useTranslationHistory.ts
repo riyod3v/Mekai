@@ -8,7 +8,6 @@ import type { TranslationHistoryRow, CreateTranslationHistoryInput, RegionBox } 
 
 // Re-export the params type so callers don't need to import from lib
 export interface AddHistoryParams {
-  mangaId: string;
   chapterId: string;
   pageIndex: number;
   region: RegionBox;
@@ -44,7 +43,6 @@ export function useAddTranslationHistory() {
   return useMutation<TranslationHistoryRow, Error, AddHistoryParams>({
     mutationFn: (params) =>
       createTranslationHistory({
-        manga_id: params.mangaId,
         chapter_id: params.chapterId,
         page_index: params.pageIndex,
         region: params.region,

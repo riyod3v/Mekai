@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import clsx from 'clsx';
 import type { RegionBox } from '@/types';
 
@@ -8,9 +8,15 @@ interface Props {
   region: RegionBox;
   translated: string;
   romaji: string | null;
+  /** Original OCR Japanese text — used for word vault save */
+  ocrText?: string;
   /** Whether this overlay is being highlighted from the History panel */
   highlighted?: boolean;
+  /** Whether overlay is read-only (published translation viewed by a reader) */
+  readOnly?: boolean;
   onDismiss: (id: string) => void;
+  /** Called when user clicks the ☆ Save button to bookmark to word vault */
+  onSaveToVault?: (id: string) => void;
 }
 
 /**
@@ -20,7 +26,8 @@ interface Props {
  * Because the image fills 100% of container width, percent-based positioning is exact.
  */
 export function TranslationOverlay({
-  id, region, translated, romaji, highlighted = false, onDismiss,
+  id, region, translated, romaji, ocrText,
+  highlighted = false, readOnly = false, onDismiss, onSaveToVault,
 }: Props) {
   const [showRomaji, setShowRomaji] = useState(false);
 
@@ -51,14 +58,29 @@ export function TranslationOverlay({
           highlighted && 'ring-2 ring-yellow-400 ring-offset-0 animate-pulse',
         )}
       >
-        {/* × dismiss */}
-        <button
-          onClick={() => onDismiss(id)}
-          className="absolute top-0.5 right-0.5 z-10 p-0.5 rounded text-gray-500 hover:text-red-400 transition-colors"
-          title="Remove overlay"
-        >
-          <X className="h-2.5 w-2.5" />
-        </button>
+        {/* Top-right action buttons */}
+        <div className="absolute top-0.5 right-0.5 z-10 flex items-center gap-0.5">
+          {/* ☆ Save to word vault */}
+          {onSaveToVault && ocrText && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onSaveToVault(id); }}
+              className="p-0.5 rounded text-gray-500 hover:text-yellow-400 transition-colors"
+              title="Save to Word Vault"
+            >
+              <Star className="h-2.5 w-2.5" />
+            </button>
+          )}
+          {/* × dismiss (hidden for read-only published overlays) */}
+          {!readOnly && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDismiss(id); }}
+              className="p-0.5 rounded text-gray-500 hover:text-red-400 transition-colors"
+              title="Remove overlay"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
 
         {/* Content — container query context is the outer div above */}
         <div
