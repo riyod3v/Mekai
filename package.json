@@ -19,7 +19,8 @@
     "react-dom": "^19.1.1",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.0",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "wanakana": "^5.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

@@ -72,16 +72,31 @@ export interface RegionBox {
 export interface TranslationHistory {
   id: string;
   user_id: string;
-  page_id: string;
+  manga_id: string;
+  chapter_id: string;
+  /** 0-based index into the CBZ image array */
+  page_index: number;
+  /** Normalised bounding box — all values 0..1 */
   region_x: number;
   region_y: number;
   region_w: number;
   region_h: number;
   ocr_text: string;
-  translated: string | null;
+  translated: string;
   romaji: string | null;
-  visible: boolean;
   created_at: string;
+}
+
+export interface CreateTranslationHistoryInput {
+  manga_id: string;
+  chapter_id: string;
+  /** 0-based index into the CBZ image array */
+  page_index: number;
+  /** Normalised bounding box — all values 0..1 */
+  region: RegionBox;
+  ocr_text: string;
+  translated: string;
+  romaji?: string | null;
 }
 
 export interface WordVaultEntry {
@@ -95,16 +110,6 @@ export interface WordVaultEntry {
 }
 
 // ─── OCR / Reader ────────────────────────────────────────────
-
-/** Draft OCR result before saving */
-export interface OcrResult {
-  text: string;
-  translated: string | null;
-  romaji: string | null;
-  region: RegionBox;
-  /** Absolute pixel coordinates on the image element */
-  absBox: { left: number; top: number; width: number; height: number };
-}
 
 export type ReadingMode = 'page' | 'scroll';
 
