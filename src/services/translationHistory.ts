@@ -40,7 +40,7 @@ export async function createTranslationHistory(
       user_id: user.id,
       chapter_id: input.chapter_id,
       page_index: input.page_index,
-      region: input.region,          // JSONB
+      region: input.region,
       ocr_text: input.ocr_text.trim(),
       translated: input.translated,
       romaji: input.romaji ?? null,

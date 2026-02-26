@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
   Scan, History, X, List, Square,
@@ -19,9 +19,7 @@ import { OCRSelectionLayer, type SelectionRect } from '@/ui/components/OCRSelect
 import { TranslationOverlay } from '@/ui/components/TranslationOverlay';
 import { HistoryPanel } from '@/ui/components/HistoryPanel';
 import { Drawer } from '@/ui/components/Drawer';
-import { ocrFromImageElement } from '@/lib/ocr';
-import { toRomaji } from '@/lib/romaji';
-import { translateJapaneseToEnglish } from '@/lib/translate';
+import { ocrAndTranslate } from '@/lib/aiPipeline';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import {
@@ -35,6 +33,7 @@ import type {
 } from '@/types';
 import { regionHash } from '@/types';
 
+const queryClient = useQueryClient();
 // ─── Types ────────────────────────────────────────────────────
 
 /** Lightweight OCR-in-progress state (one at a time). */
@@ -432,61 +431,61 @@ export default function MangaReaderPage() {
 
   // ── OCR selection handler (fully automatic pipeline) ──────
   const handlePageSelect = useCallback(
-    async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
-      if (!chapter) return;
-      setOcr({ phase: 'running', pageIndex, selection: sel, error: null });
-      try {
-        const ocrText = await ocrFromImageElement(imgEl, sel.region);
-        if (!ocrText.trim()) {
-          setOcr((prev) =>
-            prev ? { ...prev, phase: 'error', error: 'No text detected in this region.' } : null,
-          );
-          return;
-        }
-        const translated = await translateJapaneseToEnglish(ocrText);
-        const romaji = toRomaji(ocrText);
+  async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
+    if (!chapter) return;
 
-        // Always save to private history
-        const row = await addHistory.mutateAsync({
-          chapterId: chapter.id,
-          pageIndex,
+    setOcr({ phase: 'running', pageIndex, selection: sel, error: null });
+
+    try {
+      const { ocrText, translated, romaji } =
+        await ocrAndTranslate(imgEl, sel.region);
+      if (!ocrText.trim()) {
+        setOcr((prev) =>
+          prev ? { ...prev, phase: 'error', error: 'No text detected in this region.' } : null
+        );
+        return;
+      }
+      
+      // Save to private history
+      const row = await addHistory.mutateAsync({
+        chapterId: chapter.id,
+        pageIndex,
+        region: sel.region,
+        ocrText,
+        translated,
+        romaji,
+      });
+
+      const newOverlay = historyRowToOverlay(row);
+      setUserOverlays((prev) => [newOverlay, ...prev]);
+      setOcr(null);
+      toast.success('Translation saved');
+
+      // If translator owner → also publish
+      if (isTranslatorOwner) {
+        await upsertChapterTranslation({
+          chapter_id: chapter.id,
+          page_index: pageIndex,
           region: sel.region,
-          ocrText,
+          region_hash: regionHash(sel.region),
+          ocr_text: ocrText,
           translated,
           romaji,
         });
 
-        // Build overlay immediately
-        const newOverlay = historyRowToOverlay(row);
-        setUserOverlays((prev) => [newOverlay, ...prev]);
-        setOcr(null);
-        toast.success('Translation saved');
-
-        // If translator + chapter owner → also publish
-        if (isTranslatorOwner) {
-          try {
-            await upsertChapterTranslation({
-              chapter_id: chapter.id,
-              page_index: pageIndex,
-              region: sel.region,
-              region_hash: regionHash(sel.region),
-              ocr_text: ocrText,
-              translated,
-              romaji,
-            });
-          } catch {
-            // Non-critical — private history was already saved
-            console.warn('Failed to publish chapter translation');
-          }
-        }
-      } catch (err) {
-        setOcr((prev) =>
-          prev ? { ...prev, phase: 'error', error: (err as Error).message } : null,
-        );
+        await queryClient.invalidateQueries({
+          queryKey: ['chapter_translations', chapterId],
+        });
       }
-    },
-    [chapter, addHistory, isTranslatorOwner],
-  );
+
+    } catch (err) {
+      setOcr((prev) =>
+        prev ? { ...prev, phase: 'error', error: (err as Error).message } : null
+      );
+    }
+  },
+  [chapter, addHistory, isTranslatorOwner, queryClient, chapterId]
+);
 
   // ── Dismiss overlay + delete from DB ──────────────────────
   const handleDismissOverlay = useCallback(
