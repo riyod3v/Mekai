@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, BookMarked, Clock, Upload } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchMangaByOwner, createManga } from '@/services/manga';
 import { fetchChaptersByManga, uploadChapter } from '@/services/chapters';
@@ -22,6 +22,7 @@ export default function TranslatorDashboard() {
   const [showMangaModal, setShowMangaModal] = useState(false);
   const [selectedManga, setSelectedManga] = useState<Manga | null>(null);
   const [showChapterModal, setShowChapterModal] = useState(false);
+  const notify = useNotification();
 
   // All shared manga owned by this translator
   const {
@@ -47,9 +48,9 @@ export default function TranslatorDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manga', 'owned'] });
       setShowMangaModal(false);
-      toast.success('Manga created and added to shared library!');
+      notify.success('Manga created and added to shared library!');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => notify.error(err.message),
   });
 
   const uploadChapterMutation = useMutation({
@@ -58,9 +59,9 @@ export default function TranslatorDashboard() {
     onSuccess: ({ chapter }) => {
       queryClient.invalidateQueries({ queryKey: ['chapters', selectedManga!.id] });
       setShowChapterModal(false);
-      toast.success(`Chapter ${chapter.chapter_number} uploaded!`);
+      notify.success(`Chapter ${chapter.chapter_number} uploaded!`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => notify.error(err.message),
   });
 
   return (

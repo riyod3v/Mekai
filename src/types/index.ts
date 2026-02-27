@@ -71,6 +71,7 @@ export interface TranslationHistoryRow {
   page_index: number;
   /** JSONB column stored as { x, y, w, h } */
   region: RegionBox;
+  region_hash: string;
   ocr_text: string;
   translated: string;
   romaji: string | null;
@@ -82,6 +83,7 @@ export interface CreateTranslationHistoryInput {
   chapter_id: string;
   page_index: number;
   region: RegionBox;
+  region_hash: string;
   ocr_text: string;
   translated: string;
   romaji?: string | null;
@@ -122,6 +124,7 @@ export interface WordVaultEntry {
   chapter_id: string | null;
   page_index: number | null;
   region: RegionBox | null;
+  region_hash: string | null;
   original: string;
   translated: string;
   romaji: string | null;
@@ -132,6 +135,7 @@ export interface CreateWordVaultInput {
   chapter_id?: string | null;
   page_index?: number | null;
   region?: RegionBox | null;
+  region_hash?: string | null;
   original: string;
   translated: string;
   romaji?: string | null;

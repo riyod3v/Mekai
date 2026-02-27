@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Library, FolderLock, BookMarked, Clock, Upload } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import clsx from 'clsx';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtimeManga } from '@/hooks/useRealtimeManga';
@@ -29,6 +29,7 @@ export default function ReaderDashboard() {
   // Chapter upload state (private manga only)
   const [selectedManga, setSelectedManga] = useState<Manga | null>(null);
   const [showChapterModal, setShowChapterModal] = useState(false);
+  const notify = useNotification();
 
   // Realtime subscription – updates when a translator uploads
   useRealtimeManga();
@@ -62,9 +63,9 @@ export default function ReaderDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manga', 'private'] });
       setShowUploadModal(false);
-      toast.success('Manga added to your private library!');
+      notify.success('Manga added to your private library!');
     },
-    onError: (err: Error) => toast.error(err.message ?? 'Upload failed'),
+    onError: (err: Error) => notify.error(err.message ?? 'Upload failed'),
   });
 
   // Chapters for the selected private manga
@@ -81,9 +82,9 @@ export default function ReaderDashboard() {
     onSuccess: ({ chapter }) => {
       queryClient.invalidateQueries({ queryKey: ['chapters', selectedManga!.id] });
       setShowChapterModal(false);
-      toast.success(`Chapter ${chapter.chapter_number} uploaded!`);
+      notify.success(`Chapter ${chapter.chapter_number} uploaded!`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => notify.error(err.message),
   });
 
   const currentManga = tab === 'shared' ? sharedManga : privateManga;

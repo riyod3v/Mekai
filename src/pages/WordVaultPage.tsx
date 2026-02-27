@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Vault, Trash2, Search } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWordVault, deleteFromWordVault } from '@/services/wordVault';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
@@ -11,6 +11,7 @@ import { formatDate } from '@/lib/dateUtils';
 export default function WordVaultPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const notify = useNotification();
   const [search, setSearch] = useState('');
 
   const {
@@ -26,9 +27,9 @@ export default function WordVaultPage() {
     mutationFn: deleteFromWordVault,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['word-vault'] });
-      toast.success('Entry removed');
+      notify.success('Entry removed');
     },
-    onError: () => toast.error('Failed to remove entry'),
+    onError: () => notify.error('Failed to remove entry'),
   });
 
   const filtered = entries.filter(

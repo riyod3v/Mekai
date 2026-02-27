@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Trash2, Clock, Crosshair } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import {
   useTranslationHistory,
   useDeleteTranslationHistory,
@@ -86,11 +86,12 @@ function HistoryItem({
 export function HistoryPanel({ chapterId, onHighlight }: Props) {
   const { data: entries = [], isLoading } = useTranslationHistory(chapterId);
   const deleteMutation = useDeleteTranslationHistory(chapterId);
+  const notify = useNotification();
 
   function handleDelete(id: string) {
     deleteMutation.mutate(id, {
-      onSuccess: () => toast.success('Entry removed'),
-      onError: () => toast.error('Failed to delete entry'),
+      onSuccess: () => notify.success('Entry removed'),
+      onError: () => notify.error('Failed to delete entry'),
     });
   }
 

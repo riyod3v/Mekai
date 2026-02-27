@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, ImageIcon, X } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import { fetchMangaById, updateManga, deleteManga } from '@/services/manga';
 import { deleteMangaCover } from '@/services/storageCovers';
 import { fetchChaptersByManga, uploadChapter } from '@/services/chapters';
@@ -56,6 +56,7 @@ export default function MangaEntryPage() {
 
   // Delete state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const notify = useNotification();
 
   const {
     data: manga,
@@ -82,9 +83,9 @@ export default function MangaEntryPage() {
     onSuccess: ({ chapter }) => {
       queryClient.invalidateQueries({ queryKey: ['chapters', id] });
       setShowChapterModal(false);
-      toast.success(`Chapter ${chapter.chapter_number} uploaded!`);
+      notify.success(`Chapter ${chapter.chapter_number} uploaded!`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => notify.error(err.message),
   });
 
   const isOwner = !!user && manga?.owner_id === user.id;
@@ -112,9 +113,9 @@ export default function MangaEntryPage() {
       setEditCoverFile(null);
       setEditCoverPreview(null);
       setRemoveCover(false);
-      toast.success('Manga updated!');
+      notify.success('Manga updated!');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => notify.error(err.message),
   });
 
   // Delete mutation
@@ -129,10 +130,10 @@ export default function MangaEntryPage() {
       queryClient.invalidateQueries({ queryKey: ['manga', 'shared'] });
       queryClient.invalidateQueries({ queryKey: ['manga', 'owned'] });
       queryClient.invalidateQueries({ queryKey: ['manga', 'private'] });
-      toast.success('Manga deleted.');
+      notify.success('Manga deleted.');
       navigate(isTranslator ? '/translator' : '/reader');
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => notify.error(err.message),
   });
 
   function openEditModal() {

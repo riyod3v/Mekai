@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import { signIn, signUp, useAuth } from '@/hooks/useAuth';
 import { useThemeContext } from '@/context/ThemeContext';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
@@ -62,6 +62,7 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const { session, loading } = useAuth();
   const { isDark, toggleTheme } = useThemeContext();
+  const notify = useNotification();
 
   const [tab, setTab] = useState<Tab>('login');
   const [email, setEmail] = useState('');
@@ -120,7 +121,7 @@ export default function AuthPage() {
         await signIn(email, password);
       } else {
         await signUp(email, password, username.trim(), role as 'reader' | 'translator');
-        toast.success('Account created! Signing you in…');
+        notify.success('Account created! Signing you in…');
       }
     } catch (err: unknown) {
       setFormError(friendlyAuthError(err));

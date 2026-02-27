@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import { getMyProfile, updateMyProfile } from '@/services/profiles';
 import type { Profile } from '@/types';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
@@ -29,6 +29,7 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
   const [saving, setSaving] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const notify = useNotification();
 
   // Fetch profile whenever modal opens
   useEffect(() => {
@@ -76,10 +77,10 @@ export function ProfileSettingsModal({ open, onClose }: Props) {
     try {
       const updated = await updateMyProfile({ username: trimmed });
       setProfile(updated);
-      toast.success('Username updated!');
+      notify.success('Username updated!');
       onClose();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save.');
+      notify.error(err instanceof Error ? err.message : 'Failed to save.');
     } finally {
       setSaving(false);
     }

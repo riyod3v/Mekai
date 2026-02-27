@@ -41,6 +41,7 @@ export async function createTranslationHistory(
       chapter_id: input.chapter_id,
       page_index: input.page_index,
       region: input.region,
+      region_hash: input.region_hash,
       ocr_text: input.ocr_text.trim(),
       translated: input.translated,
       romaji: input.romaji ?? null,

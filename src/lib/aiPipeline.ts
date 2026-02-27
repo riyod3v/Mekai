@@ -4,6 +4,65 @@ import { ocrFromImageElement, type BBox } from '@/lib/ocr';
 import { translateJapaneseToEnglish } from '@/lib/translate';
 import { toRomaji } from '@/lib/romaji';
 
+type EdgePayload = {
+  ocrText?: unknown;
+  translated?: unknown;
+  romaji?: unknown;
+};
+
+async function getEdgeErrorDetails(error: unknown): Promise<string> {
+  const maybeContext =
+    typeof error === 'object' &&
+    error !== null &&
+    'context' in error
+      ? (error as { context?: unknown }).context
+      : undefined;
+
+  if (!(maybeContext instanceof Response)) {
+    return String(error instanceof Error ? error.message : error);
+  }
+
+  let body = '';
+  try {
+    body = (await maybeContext.clone().text()).trim();
+  } catch {
+    body = '';
+  }
+
+  const statusPart = `status=${maybeContext.status}`;
+  const bodyPart = body ? ` body=${body}` : '';
+  return `${statusPart}${bodyPart}`;
+}
+
+async function invokeOcrTranslate(imageDataUrl: string): Promise<EdgePayload> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+
+  // --- Debug: verify session matches the configured project ---
+  console.debug('[aiPipeline] Supabase project URL:', import.meta.env.VITE_SUPABASE_URL);
+  console.debug('[aiPipeline] Access token exists:', !!accessToken);
+  // ------------------------------------------------------------
+
+  if (!accessToken) {
+    throw new Error('Edge invoke aborted: no authenticated session token available.');
+  }
+
+  const { data, error } = await supabase.functions.invoke('ocr-translate', {
+    body: { imageDataUrl },
+  });
+
+  if (error) {
+    const details = await getEdgeErrorDetails(error);
+    throw new Error(`[ocr-translate] invoke failed: ${details}`);
+  }
+
+  return (data ?? {}) as EdgePayload;
+}
+
+export async function callEdge(imageDataUrl: string) {
+  return await invokeOcrTranslate(imageDataUrl);
+}
+
 export type OcrTranslateResult = {
   ocrText: string;
   translated: string;
@@ -68,12 +127,7 @@ function cropRegionToDataUrl(imgEl: HTMLImageElement, bbox: BBox, upscale = 2): 
 
 async function ocrAndTranslateViaEdge(imgEl: HTMLImageElement, bbox: BBox): Promise<OcrTranslateResult> {
   const imageDataUrl = cropRegionToDataUrl(imgEl, bbox, 2);
-
-  const { data, error } = await supabase.functions.invoke('ocr-translate', {
-    body: { imageDataUrl },
-  });
-
-  if (error) throw error;
+  const data = await invokeOcrTranslate(imageDataUrl);
 
   return {
     ocrText: String(data?.ocrText ?? '').trim(),

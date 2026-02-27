@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'react-hot-toast';
+import { NotificationProvider } from '@/context/NotificationContext';
+import { StatusBar } from '@/ui/components/StatusBar';
 
 import { Navbar } from '@/ui/components/Navbar';
 import { ProtectedRoute } from '@/ui/components/ProtectedRoute';
@@ -126,23 +127,12 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <BrowserRouter>
-          <AppRoutes />
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: '#1e1e2e',
-                color: '#e2e8f0',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '12px',
-                fontSize: '13px',
-              },
-              success: { iconTheme: { primary: '#6366f1', secondary: '#fff' } },
-              error: { iconTheme: { primary: '#f87171', secondary: '#fff' } },
-            }}
-          />
-        </BrowserRouter>
+        <NotificationProvider>
+          <BrowserRouter>
+            <AppRoutes />
+            <StatusBar />
+          </BrowserRouter>
+        </NotificationProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

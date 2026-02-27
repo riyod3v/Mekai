@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import { supabase } from '@/lib/supabase';
 import { getMyProfile, updateMyProfile } from '@/services/profiles';
 import type { Profile } from '@/types';
@@ -102,6 +102,7 @@ export default function SettingsPage() {
   const [usernameError, setUsernameError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const notify = useNotification();
 
   useEffect(() => {
     getMyProfile()
@@ -109,7 +110,7 @@ export default function SettingsPage() {
         setProfile(p);
         setUsername(p.username ?? '');
       })
-      .catch(() => toast.error('Could not load profile.'))
+      .catch(() => notify.error('Could not load profile.'))
       .finally(() => setProfileLoading(false));
   }, []);
 
@@ -122,9 +123,9 @@ export default function SettingsPage() {
     try {
       const updated = await updateMyProfile({ username });
       setProfile(updated);
-      toast.success('Username updated!');
+      notify.success('Username updated!');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save.');
+      notify.error(err instanceof Error ? err.message : 'Failed to save.');
     } finally {
       setSavingProfile(false);
     }
@@ -134,7 +135,7 @@ export default function SettingsPage() {
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { toast.error('Image must be under 2 MB.'); return; }
+    if (file.size > 2 * 1024 * 1024) { notify.error('Image must be under 2 MB.'); return; }
     setAvatarUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -148,9 +149,9 @@ export default function SettingsPage() {
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
       const updated = await updateMyProfile({ avatar_url: publicUrl });
       setProfile(updated);
-      toast.success('Avatar updated!');
+      notify.success('Avatar updated!');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed.');
+      notify.error(err instanceof Error ? err.message : 'Upload failed.');
     } finally {
       setAvatarUploading(false);
       e.target.value = '';
@@ -162,9 +163,9 @@ export default function SettingsPage() {
     try {
       const updated = await updateMyProfile({ avatar_url: null });
       setProfile(updated);
-      toast.success('Avatar removed.');
+      notify.success('Avatar removed.');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove avatar.');
+      notify.error(err instanceof Error ? err.message : 'Failed to remove avatar.');
     } finally {
       setAvatarUploading(false);
     }
@@ -210,11 +211,11 @@ export default function SettingsPage() {
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPw });
       if (updateErr) throw new Error(updateErr.message);
 
-      toast.success('Password changed successfully!');
+      notify.success('Password changed successfully!');
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
       setPwErrors({ current: '', new: '', confirm: '' });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to change password.');
+      notify.error(err instanceof Error ? err.message : 'Failed to change password.');
     } finally {
       setSavingPw(false);
     }

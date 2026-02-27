@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
   Scan, History, X, List, Square,
 } from 'lucide-react';
 import JSZip from 'jszip';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 import clsx from 'clsx';
 
 import { fetchChapterById, fetchChaptersByManga } from '@/services/chapters';
@@ -33,7 +34,6 @@ import type {
 } from '@/types';
 import { regionHash } from '@/types';
 
-const queryClient = useQueryClient();
 // ─── Types ────────────────────────────────────────────────────
 
 /** Lightweight OCR-in-progress state (one at a time). */
@@ -93,7 +93,20 @@ function publishedRowToOverlay(row: ChapterTranslationRow): Overlay {
     source: 'published',
   };
 }
+async function imageElementToDataUrl(imgEl: HTMLImageElement): Promise<string> {
+  // Fetch the displayed image (works for blob: URLs too)
+  const res = await fetch(imgEl.src);
+  if (!res.ok) throw new Error(`Failed to fetch image src (${res.status})`);
 
+  const blob = await res.blob();
+
+  return await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("Failed to convert image to data URL"));
+    r.readAsDataURL(blob);
+  });
+}
 // ─── Per-page sub-component ───────────────────────────────────
 
 interface PageItemProps {
@@ -108,13 +121,13 @@ interface PageItemProps {
   highlightId: string | null;
   onDismissOverlay: (id: string) => void;
   onSaveToVault: (id: string) => void;
-  isTranslatorOwner: boolean;
+  isChapterOwner: boolean;
 }
 
 function ReaderPageItem({
   src, pageIndex, loading, selectionActive,
   onSelect, ocrState, onDismissOcr, overlays, highlightId,
-  onDismissOverlay, onSaveToVault, isTranslatorOwner,
+  onDismissOverlay, onSaveToVault, isChapterOwner,
 }: PageItemProps) {
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -152,7 +165,7 @@ function ReaderPageItem({
             romaji={ov.romaji}
             ocrText={ov.ocrText}
             highlighted={highlightId === ov.id}
-            readOnly={ov.source === 'published' && !isTranslatorOwner}
+            readOnly={ov.source === 'published' && !isChapterOwner}
             onDismiss={onDismissOverlay}
             onSaveToVault={onSaveToVault}
           />
@@ -201,6 +214,7 @@ function ReaderPageItem({
 // ─── Main component ───────────────────────────────────────────
 
 export default function MangaReaderPage() {
+  const queryClient = useQueryClient();
   const { chapterId } = useParams<{ chapterId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -241,6 +255,7 @@ export default function MangaReaderPage() {
   const { data: historyRows } = useTranslationHistory(chapterId ?? '');
   const addHistory = useAddTranslationHistory();
   const deleteHistory = useDeleteTranslationHistory(chapterId ?? '');
+  const notify = useNotification();
 
   // ── Sync user overlays from persisted history ─────────────
   useEffect(() => {
@@ -269,8 +284,11 @@ export default function MangaReaderPage() {
   const nextChapter =
     currentIdx >= 0 && currentIdx < siblings.length - 1 ? siblings[currentIdx + 1] : null;
 
-  // Determine if current user is the translator who owns this chapter
-  const isTranslatorOwner = !!(isTranslator && chapter && user && chapter.owner_id === user.id);
+  // Any translator can publish translations for readers to see
+  const canPublishTranslations = !!(isTranslator && chapter && user);
+  
+  // Only the chapter owner can edit published translations (other translators see them as read-only)
+  const isChapterOwner = !!(user && chapter && chapter.owner_id === user.id);
 
   // ── Fetch published translations ──────────────────────────
   const { data: publishedRows } = useQuery({
@@ -432,6 +450,9 @@ export default function MangaReaderPage() {
   // ── OCR selection handler (fully automatic pipeline) ──────
   const handlePageSelect = useCallback(
   async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
+    const pageDataUrl = await imageElementToDataUrl(imgEl);
+    console.log("PAGE imageDataUrl:", pageDataUrl.slice(0, 80) + "...");
+    
     if (!chapter) return;
 
     setOcr({ phase: 'running', pageIndex, selection: sel, error: null });
@@ -451,6 +472,7 @@ export default function MangaReaderPage() {
         chapterId: chapter.id,
         pageIndex,
         region: sel.region,
+        region_hash: regionHash(sel.region),
         ocrText,
         translated,
         romaji,
@@ -459,10 +481,10 @@ export default function MangaReaderPage() {
       const newOverlay = historyRowToOverlay(row);
       setUserOverlays((prev) => [newOverlay, ...prev]);
       setOcr(null);
-      toast.success('Translation saved');
+      notify.success('Translation saved');
 
-      // If translator owner → also publish
-      if (isTranslatorOwner) {
+      // If translator → also publish for readers to see
+      if (canPublishTranslations) {
         await upsertChapterTranslation({
           chapter_id: chapter.id,
           page_index: pageIndex,
@@ -484,7 +506,7 @@ export default function MangaReaderPage() {
       );
     }
   },
-  [chapter, addHistory, isTranslatorOwner, queryClient, chapterId]
+  [chapter, addHistory, canPublishTranslations, queryClient, chapterId]
 );
 
   // ── Dismiss overlay + delete from DB ──────────────────────
@@ -494,7 +516,7 @@ export default function MangaReaderPage() {
       try {
         await deleteHistory.mutateAsync(id);
       } catch {
-        toast.error('Failed to delete from history');
+        notify.error('Failed to delete from history');
       }
     },
     [deleteHistory],
@@ -510,17 +532,23 @@ export default function MangaReaderPage() {
           chapter_id: chapterId ?? undefined,
           page_index: ov.pageIndex,
           region: ov.region,
+          region_hash: ov.region ? regionHash(ov.region) : null,
           original: ov.ocrText,
           translated: ov.translated,
           romaji: ov.romaji,
         });
-        toast.success('Saved to Word Vault');
-      } catch {
-        toast.error('Failed to save to Word Vault');
+        notify.success('Saved to Word Vault');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to save to Word Vault';
+        notify.error(msg);
+        console.error('[handleSaveToVault] error:', err);
       }
     },
-    [mergedOverlays, chapterId],
+    [mergedOverlays, chapterId, notify],
   );
+
+  // Only readers can bookmark to Word Vault - translators don't get the bookmark button
+  const bookmarkHandler = isTranslator ? undefined : handleSaveToVault;
 
   // ── Keyboard navigation (page mode only) ─────────────────
   useEffect(() => {
@@ -725,8 +753,8 @@ export default function MangaReaderPage() {
                   overlays={mergedOverlays.filter((o) => o.pageIndex === i)}
                   highlightId={highlightId}
                   onDismissOverlay={handleDismissOverlay}
-                  onSaveToVault={handleSaveToVault}
-                  isTranslatorOwner={isTranslatorOwner}
+                  onSaveToVault={bookmarkHandler}
+                  isChapterOwner={isChapterOwner}
                 />
               ))}
 
@@ -771,8 +799,8 @@ export default function MangaReaderPage() {
                 overlays={mergedOverlays.filter((o) => o.pageIndex === currentPage)}
                 highlightId={highlightId}
                 onDismissOverlay={handleDismissOverlay}
-                onSaveToVault={handleSaveToVault}
-                isTranslatorOwner={isTranslatorOwner}
+                onSaveToVault={bookmarkHandler}
+                isChapterOwner={isChapterOwner}
               />
 
               {/* Page navigation bar */}

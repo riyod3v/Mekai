@@ -4,20 +4,21 @@ import { useAuth, signOut } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { useThemeContext } from '@/context/ThemeContext';
 import { ProfileDropdown } from '@/ui/components/ProfileDropdown';
-import toast from 'react-hot-toast';
+import { useNotification } from '@/context/NotificationContext';
 
 export function Navbar() {
   const { user } = useAuth();
   const { isTranslator } = useRole();
   const { isDark } = useThemeContext();
   const navigate = useNavigate();
+  const notify = useNotification();
 
   async function handleSignOut() {
     try {
       await signOut();
       navigate('/auth');
     } catch {
-      toast.error('Failed to sign out');
+      notify.error('Failed to sign out');
     }
   }
 

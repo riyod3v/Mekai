@@ -11,6 +11,7 @@ export interface AddHistoryParams {
   chapterId: string;
   pageIndex: number;
   region: RegionBox;
+  region_hash: string;
   ocrText: string;
   translated: string;
   romaji?: string | null;
@@ -46,6 +47,7 @@ export function useAddTranslationHistory() {
         chapter_id: params.chapterId,
         page_index: params.pageIndex,
         region: params.region,
+        region_hash: params.region_hash,
         ocr_text: params.ocrText,
         translated: params.translated,
         romaji: params.romaji ?? null,
