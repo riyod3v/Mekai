@@ -56,9 +56,7 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     romaji: input.romaji?.trim() || null,
   };
 
-  console.log('[word_vault] inserting payload:', payload);
-
-  // ─── Insert with debug logging ───────────────────────────────────
+  // ─── Insert ──────────────────────────────────────────────────────
   const { data, error } = await supabase
     .from('word_vault')
     .insert(payload)
@@ -76,7 +74,6 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     throw new Error(`Word Vault insert failed: ${error.message}`);
   }
 
-  console.log('[word_vault] insert success:', data);
   return data as WordVaultEntry;
 }
 

@@ -1,4 +1,26 @@
-// ─── Translation (MyMemory free API) ────────────────────────
+/**
+ * Multi-provider Japanese → English translation.
+ *
+ * Provider priority (first available wins):
+ *   1. Local translate service (via local-services companion server)
+ *   2. MyMemory free API  (no key required, works everywhere)
+ *
+ * When running on Vercel the local service is unreachable so MyMemory
+ * is used automatically. During a local demo you can start the companion
+ * server (`local-services/`) to get higher quality offline translations.
+ */
+
+import {
+  isLocalTranslateAvailable,
+  localTranslateJaToEn,
+} from '@/lib/localServices';
+
+// ─── Public types ───────────────────────────────────────────
+
+/** Which translation provider produced the result. */
+export type TranslationProvider = 'local-services' | 'MyMemory';
+
+// ─── MyMemory (free, no key) ────────────────────────────────
 
 const MYMEMORY_URL = 'https://api.mymemory.translated.net/get';
 
@@ -12,34 +34,62 @@ interface MyMemoryResponse {
   responseStatus: number;
 }
 
-/**
- * Translate a Japanese string to English using the free MyMemory API.
- *
- * - Empty / whitespace-only input → returns empty string immediately.
- * - Input longer than 500 chars is sliced before sending.
- * - Network / parse errors → throws Error("Translation failed").
- */
-export async function translateJapaneseToEnglish(text: string): Promise<string> {
-  const trimmed = text.trim();
-  if (!trimmed) return '';
-
-  // Slice to keep within MyMemory's reliable range
-  const query = trimmed.length > MAX_CHARS ? trimmed.slice(0, MAX_CHARS) : trimmed;
-
+async function translateWithMyMemory(text: string): Promise<string> {
+  const query = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
   const url = `${MYMEMORY_URL}?q=${encodeURIComponent(query)}&langpair=ja|en`;
 
-  let json: MyMemoryResponse;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`MyMemory HTTP ${res.status}`);
+  const json = (await res.json()) as MyMemoryResponse;
+
+  const translated = json?.responseData?.translatedText?.trim();
+  if (!translated) throw new Error('MyMemory returned empty result');
+
+  return translated.replace(/\s+/g, ' ');
+}
+
+// ─── Public API ─────────────────────────────────────────────
+
+/**
+ * Translate a Japanese string to English, returning both the translated
+ * text and which provider was used.
+ *
+ * - Empty / whitespace-only input → returns immediately with provider 'MyMemory'.
+ * - Tries local translate service first (if running).
+ * - Falls back to MyMemory.
+ * - Throws if ALL providers fail.
+ */
+export async function translateJapaneseToEnglishWithProvider(
+  text: string,
+): Promise<{ translated: string; provider: TranslationProvider }> {
+  const trimmed = text.trim();
+  if (!trimmed) return { translated: '', provider: 'MyMemory' };
+
+  // 1️⃣ Try local translate service (best quality, offline)
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    json = await res.json() as MyMemoryResponse;
+    if (await isLocalTranslateAvailable()) {
+      const translated = await localTranslateJaToEn(trimmed);
+      return { translated, provider: 'local-services' };
+    }
+  } catch {
+    // Fall through to next provider
+  }
+
+  // 2️⃣ MyMemory (always-available free API)
+  try {
+    const translated = await translateWithMyMemory(trimmed);
+    return { translated, provider: 'MyMemory' };
   } catch {
     throw new Error('Translation failed');
   }
+}
 
-  const translated = json?.responseData?.translatedText?.trim();
-  if (!translated) throw new Error('Translation failed');
-
-  // Collapse any extra whitespace introduced by the API
-  return translated.replace(/\s+/g, ' ');
+/**
+ * Convenience wrapper — returns only the translated string.
+ * Use `translateJapaneseToEnglishWithProvider` when you also need the
+ * provider label (e.g. for debug display).
+ */
+export async function translateJapaneseToEnglish(text: string): Promise<string> {
+  const { translated } = await translateJapaneseToEnglishWithProvider(text);
+  return translated;
 }

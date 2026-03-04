@@ -57,6 +57,10 @@ interface Overlay {
   romaji: string | null;
   /** 'published' overlays are read-only for non-translator users */
   source: 'history' | 'published';
+  /** Which OCR engine produced ocrText (undefined for rows loaded from DB) */
+  ocrSource?: 'manga-ocr' | 'tesseract';
+  /** Which translation provider produced translated (undefined for DB rows) */
+  translationProvider?: 'local-services' | 'MyMemory';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -93,20 +97,7 @@ function publishedRowToOverlay(row: ChapterTranslationRow): Overlay {
     source: 'published',
   };
 }
-async function imageElementToDataUrl(imgEl: HTMLImageElement): Promise<string> {
-  // Fetch the displayed image (works for blob: URLs too)
-  const res = await fetch(imgEl.src);
-  if (!res.ok) throw new Error(`Failed to fetch image src (${res.status})`);
 
-  const blob = await res.blob();
-
-  return await new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error("Failed to convert image to data URL"));
-    r.readAsDataURL(blob);
-  });
-}
 // ─── Per-page sub-component ───────────────────────────────────
 
 interface PageItemProps {
@@ -120,7 +111,7 @@ interface PageItemProps {
   overlays: Overlay[];
   highlightId: string | null;
   onDismissOverlay: (id: string) => void;
-  onSaveToVault: (id: string) => void;
+  onSaveToVault?: (id: string) => void;
   isChapterOwner: boolean;
 }
 
@@ -164,6 +155,8 @@ function ReaderPageItem({
             translated={ov.translated}
             romaji={ov.romaji}
             ocrText={ov.ocrText}
+            ocrSource={ov.ocrSource}
+            translationProvider={ov.translationProvider}
             highlighted={highlightId === ov.id}
             readOnly={ov.source === 'published' && !isChapterOwner}
             onDismiss={onDismissOverlay}
@@ -450,14 +443,12 @@ export default function MangaReaderPage() {
   // ── OCR selection handler (fully automatic pipeline) ──────
   const handlePageSelect = useCallback(
   async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
-    const pageDataUrl = await imageElementToDataUrl(imgEl);
-    
     if (!chapter) return;
 
     setOcr({ phase: 'running', pageIndex, selection: sel, error: null });
 
     try {
-      const { ocrText, translated, romaji } =
+      const { ocrText, translated, romaji, ocrSource, translationProvider } =
         await ocrAndTranslate(imgEl, sel.region);
       if (!ocrText.trim()) {
         setOcr((prev) =>
@@ -477,7 +468,11 @@ export default function MangaReaderPage() {
         romaji,
       });
 
-      const newOverlay = historyRowToOverlay(row);
+      const newOverlay: Overlay = {
+        ...historyRowToOverlay(row),
+        ocrSource,
+        translationProvider,
+      };
       setUserOverlays((prev) => [newOverlay, ...prev]);
       setOcr(null);
       notify.success('Translation saved');

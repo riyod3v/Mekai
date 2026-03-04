@@ -14,7 +14,7 @@ interface Props {
   onHighlight?: (entry: TranslationHistoryRow) => void;
 }
 
-function snippet(text: string | null | undefined, max = 55): string {
+function snippet(text: string | null | undefined, max = 80): string {
   if (!text) return '';
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
@@ -63,21 +63,30 @@ function HistoryItem({
         </div>
       </div>
 
-      {/* Translation (primary) */}
-      <p className="text-xs text-green-300 break-words leading-relaxed">
+      {/* Translation (primary, full-width) */}
+      <p className="text-sm text-green-300 break-words leading-relaxed">
         {snippet(entry.translated)}
       </p>
 
-      {/* Expanded: romaji + ocr text */}
+      {/* Expanded: romaji + original JP */}
       {expanded && (
-        <div className="flex flex-col gap-1 pt-1 border-t border-white/10">
+        <div className="flex flex-col gap-1.5 pt-1.5 border-t border-white/10">
           {entry.romaji && (
-            <p className="text-xs text-indigo-300 italic break-words">{entry.romaji}</p>
+            <p className="text-sm text-indigo-300 italic break-words leading-relaxed">
+              {entry.romaji}
+            </p>
           )}
-          <p className="text-xs font-mono text-gray-500 break-words leading-relaxed">
+          <p className="text-sm text-gray-400 break-words leading-relaxed">
             {entry.ocr_text ?? ''}
           </p>
         </div>
+      )}
+
+      {/* Show/hide original toggle hint */}
+      {(entry.romaji || entry.ocr_text) && (
+        <span className="text-[10px] text-gray-600 select-none">
+          {expanded ? 'Hide original ▴' : 'Show original ▾'}
+        </span>
       )}
     </li>
   );

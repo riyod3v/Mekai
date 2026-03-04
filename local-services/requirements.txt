@@ -1,0 +1,33 @@
+# Mekai Local Services — Python dependencies
+#
+# Recommended setup (Python 3.11 or 3.12 via uv):
+#
+#   uv python install 3.11
+#   uv venv --python 3.11 .venv
+#   .venv\Scripts\activate          # Windows PowerShell
+#   uv pip install -r requirements.txt
+#
+# manga-ocr pulls in torch (~2 GB) on first install.
+# If you only want translation, comment out the manga-ocr line.
+
+flask>=3.0
+flask-cors>=4.0
+Pillow>=10.0
+
+# --- OCR (optional — comment out to skip ~2 GB download) ---
+manga-ocr>=0.1.11
+
+# --- Translation option A: Argos Translate (lightweight, ~100 MB) ---
+# Works on Python 3.11/3.12. After installing run:
+#   python server.py --install-translate
+argostranslate>=1.9
+
+# --- Translation option B: OPUS-MT via HuggingFace (higher quality, ~300 MB) ---
+# Requires transformers + sentencepiece. Model downloads on first use (or via
+# python server.py --install-translate). Comment out Argos above if preferred.
+transformers>=4.40
+sentencepiece>=0.2.0
+# torch CPU-only — much smaller than the default CUDA build:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Add that line above before running uv pip install -r requirements.txt,
+# or pre-install torch CPU manually before running this file.
