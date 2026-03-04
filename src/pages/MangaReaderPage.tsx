@@ -451,7 +451,6 @@ export default function MangaReaderPage() {
   const handlePageSelect = useCallback(
   async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
     const pageDataUrl = await imageElementToDataUrl(imgEl);
-    console.log("PAGE imageDataUrl:", pageDataUrl.slice(0, 80) + "...");
     
     if (!chapter) return;
 

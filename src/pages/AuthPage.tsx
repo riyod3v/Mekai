@@ -30,7 +30,7 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// Maps raw Supabase/network error messages to human-friendly text
+// SecurityError Messages
 function friendlyAuthError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   if (msg.includes('invalid login credentials') || msg.includes('invalid credentials'))

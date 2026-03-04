@@ -29,21 +29,49 @@ const VERTICAL_RATIO = 1.2;
 /** Tesseract PSM type (avoids eager import of the full module). */
 type PSM = import('tesseract.js').PSM;
 
+/**
+ * Set of Tesseract parameters that are NOT supported by the WASM / LSTM-only
+ * runtime and produce noisy console warnings. We suppress ALL of them.
+ *
+ * Known unsupported params (non-exhaustive):
+ *   language_model_ngram_on, language_model_ngram_scale_factor,
+ *   language_model_ngram_space_delimited_language,
+ *   language_model_ngram_nonmatch_score,
+ *   language_model_use_sigmoidal_certainty,
+ *   classify_integer_matcher_multiplier, classify_cp_cutoff_strength,
+ *   enable_new_segsearch, textord_force_make_prop_words,
+ *   edges_max_children_per_outline, segsearch_max_char_wh_ratio,
+ *   assume_fixed_pitch_char_segment, chop_enable,
+ *   preserve_interword_spaces, …
+ */
+
 // ─── Helpers ─────────────────────────────────────────────────
+
+/** Padding fraction (~8%) added around the bounding box to avoid tight crops. */
+const CROP_PADDING = 0.08;
 
 /**
  * Crops a region from an HTMLImageElement into an offscreen canvas,
  * upscaling by UPSCALE for better Tesseract accuracy.
+ * Adds ~8% padding around the bbox to avoid cutting into speech bubbles.
  * If the region is taller than wide (vertical text), the canvas is
  * rotated 90° clockwise so Tesseract treats it as horizontal text.
  */
 function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
   const { naturalWidth: nw, naturalHeight: nh } = imgEl;
 
-  const cropX = Math.round(bbox.x * nw);
-  const cropY = Math.round(bbox.y * nh);
-  const cropW = Math.max(Math.round(bbox.w * nw), 1);
-  const cropH = Math.max(Math.round(bbox.h * nh), 1);
+  // Apply ~8% padding around the bounding box (Task 5)
+  const padW = bbox.w * CROP_PADDING;
+  const padH = bbox.h * CROP_PADDING;
+  const padX = Math.max(bbox.x - padW, 0);
+  const padY = Math.max(bbox.y - padH, 0);
+  const padRight = Math.min(bbox.x + bbox.w + padW, 1);
+  const padBottom = Math.min(bbox.y + bbox.h + padH, 1);
+
+  const cropX = Math.round(padX * nw);
+  const cropY = Math.round(padY * nh);
+  const cropW = Math.max(Math.round((padRight - padX) * nw), 1);
+  const cropH = Math.max(Math.round((padBottom - padY) * nh), 1);
 
   const isVertical = cropH > cropW * VERTICAL_RATIO;
 
@@ -94,6 +122,18 @@ function cleanText(raw: string): string {
 
 // ─── Public API ───────────────────────────────────────────────
 
+// Patch console.warn once to suppress ALL "Parameter not found" noise from
+// the Tesseract WASM build (tesseract-core-relax_*.wasm.js).
+// These warnings come from the LSTM-only engine trying to load legacy
+// Tesseract parameters that do not exist in the WASM build.
+const _origWarn = console.warn;
+console.warn = (...args: unknown[]) => {
+  const first = typeof args[0] === 'string' ? args[0] : '';
+  // Suppress ALL "Parameter not found" warnings from Tesseract WASM
+  if (first.includes('Parameter not found')) return;
+  _origWarn.apply(console, args);
+};
+
 /**
  * Run OCR on a normalised bounding-box region of an image element.
  *
@@ -119,15 +159,21 @@ export async function ocrFromImageElement(
   const canvas = cropToCanvas(imgEl, bbox);
 
   const worker = await createWorker(lang, 1, {
-    // Suppress internal Tesseract console noise
-    logger: () => {},
+    // Filter out "Parameter not found" warnings from the WASM runtime
+    logger: (m: { status?: string; progress?: number }) => {
+      // We intentionally silence all logger output; the WASM runtime
+      // emits many "Parameter not found" warnings for legacy params
+      // that do not exist in the LSTM-only engine.
+      void m;
+    },
   });
 
   try {
-    // Stable config: assume uniform block of text, preserve spaces
+    // Only set parameters that the WASM / LSTM-only build actually supports.
+    // `preserve_interword_spaces` and several `language_model_*` params
+    // are NOT supported and produce console warnings — we skip them.
     await worker.setParameters({
       tessedit_pageseg_mode: '6' as PSM,
-      preserve_interword_spaces: '1',
     });
 
     const {
