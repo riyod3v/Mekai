@@ -1,5 +1,5 @@
 // src/lib/aiPipeline.ts
-import { ocrFromImageElement, type BBox, cropToDataUrl } from '@/lib/ocr';
+import { ocrFromImageElement, type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr';
 import { translateJapaneseToEnglishWithProvider } from '@/lib/translate';
 import { toRomaji } from '@/lib/romaji';
 import { isMangaOcrAvailable, localMangaOcr } from '@/lib/localServices';
@@ -39,6 +39,11 @@ export async function ocrAndTranslate(
 ): Promise<OcrTranslateResult> {
   let ocrText = '';
   let ocrSource: OcrTranslateResult['ocrSource'] = 'tesseract';
+
+  // 0️⃣  Pre-flight: skip OCR entirely if region has no detectable ink
+  if (!hasInkContent(imgEl, bbox)) {
+    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'MyMemory' };
+  }
 
   // 1️⃣  Try local manga-ocr (higher quality for manga)
   try {

@@ -57,6 +57,8 @@ function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
  *   • Starts at initialFontSize (= height × 0.18), minimum 12 px.
  *   • Shrinks in 0.5 px steps until the wrapped block fits inside the
  *     padded area or reaches minFontSize (= height × 0.08, min 12 px).
+ *   • If text still overflows at minimum size, lines are truncated with "…".
+ *   • All drawing is clipped to the canvas rect — text never spills outside.
  *   • Text is centred horizontally and vertically.
  */
 function drawFittedText(canvas: HTMLCanvasElement, text: string): void {
@@ -87,8 +89,7 @@ function drawFittedText(canvas: HTMLCanvasElement, text: string): void {
     ctx.font = `600 ${fontSize}px ${FONT_FAMILY}`;
     lines = wrapWords(ctx, text, maxW);
     const lineHeight = fontSize * 1.25;
-    const blockH = lines.length * lineHeight;
-    if (blockH <= maxH) break;
+    if (lines.length * lineHeight <= maxH) break;
     fontSize -= 0.5;
   }
 
@@ -98,8 +99,27 @@ function drawFittedText(canvas: HTMLCanvasElement, text: string): void {
   lines = wrapWords(ctx, text, maxW);
 
   const lineHeight = fontSize * 1.25;
+
+  // If still overflowing at minimum font size, truncate lines with "…"
+  const maxLines = Math.max(Math.floor(maxH / lineHeight), 1);
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    // Trim last visible line until "…" fits within maxW
+    let last = lines[lines.length - 1] + '\u2026';
+    while (last.length > 1 && ctx.measureText(last).width > maxW) {
+      last = last.slice(0, -2) + '\u2026';
+    }
+    lines[lines.length - 1] = last;
+  }
+
   const blockH = lines.length * lineHeight;
   const startY = (H - blockH) / 2 + fontSize * 0.85; // baseline of first line
+
+  // Clip to canvas bounds — text can never spill outside the overlay rect
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  ctx.clip();
 
   ctx.fillStyle = TEXT_COLOR;
   ctx.textAlign  = 'center';
@@ -108,6 +128,8 @@ function drawFittedText(canvas: HTMLCanvasElement, text: string): void {
   lines.forEach((line, i) => {
     ctx.fillText(line, W / 2, startY + i * lineHeight);
   });
+
+  ctx.restore();
 }
 
 // ─── Component ────────────────────────────────────────────────
