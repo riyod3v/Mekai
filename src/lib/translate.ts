@@ -2,12 +2,12 @@
  * Multi-provider Japanese → English translation.
  *
  * Provider priority (first available wins):
- *   1. Local translate service (via local-services companion server)
+ *   1. Local translate service (via py-mekai-api companion server)
  *   2. MyMemory free API  (no key required, works everywhere)
  *
  * When running on Vercel the local service is unreachable so MyMemory
  * is used automatically. During a local demo you can start the companion
- * server (`local-services/`) to get higher quality offline translations.
+ * server (`py-mekai-api/`) to get higher quality offline translations.
  */
 
 import {
@@ -18,7 +18,7 @@ import {
 // ─── Public types ───────────────────────────────────────────
 
 /** Which translation provider produced the result. */
-export type TranslationProvider = 'local-services' | 'MyMemory';
+export type TranslationProvider = 'py-mekai-api' | 'MyMemory';
 
 // ─── MyMemory (free, no key) ────────────────────────────────
 
@@ -69,7 +69,7 @@ export async function translateJapaneseToEnglishWithProvider(
   try {
     if (await isLocalTranslateAvailable()) {
       const translated = await localTranslateJaToEn(trimmed);
-      return { translated, provider: 'local-services' };
+      return { translated, provider: 'py-mekai-api' };
     }
   } catch {
     // Fall through to next provider

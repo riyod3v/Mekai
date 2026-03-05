@@ -35,7 +35,7 @@ pip install uv
 ### 2 — Create a virtualenv pinned to Python 3.11
 
 ```powershell
-cd local-services
+cd py-mekai-api
 
 # Download Python 3.11 (skipped if already present):
 uv python install 3.11

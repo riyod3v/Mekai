@@ -60,7 +60,7 @@ interface Overlay {
   /** Which OCR engine produced ocrText (undefined for rows loaded from DB) */
   ocrSource?: 'manga-ocr' | 'tesseract';
   /** Which translation provider produced translated (undefined for DB rows) */
-  translationProvider?: 'local-services' | 'MyMemory';
+  translationProvider?: 'py-mekai-api' | 'MyMemory';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────

@@ -3,7 +3,7 @@
  * development or live demos.
  *
  * When running locally you can spin up a Python companion server
- * (see `local-services/README.md`) that provides:
+ * (see `py-mekai-api/README.md`) that provides:
  *   - manga-ocr   → vastly better Japanese OCR than browser Tesseract
  *   - Local translate → offline, higher quality ja→en translation
  *
