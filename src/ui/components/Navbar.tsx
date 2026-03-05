@@ -5,6 +5,8 @@ import { useRole } from '@/hooks/useRole';
 import { useThemeContext } from '@/context/ThemeContext';
 import { ProfileDropdown } from '@/ui/components/ProfileDropdown';
 import { useNotification } from '@/context/NotificationContext';
+import logoDark from '@/assets/IMG/branding/mekai-logo-dark.svg';
+import logoLight from '@/assets/IMG/branding/mekai-logo-light.svg';
 
 export function Navbar() {
   const { user } = useAuth();
@@ -30,7 +32,7 @@ export function Navbar() {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <img
-            src={isDark ? '/IMG/branding/mekai-logo-dark.svg' : '/IMG/branding/mekai-logo-light.svg'}
+            src={isDark ? logoDark : logoLight}
             alt="Mekai"
             className="h-7 w-auto"
           />

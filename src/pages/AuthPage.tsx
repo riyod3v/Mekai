@@ -6,6 +6,8 @@ import { signIn, signUp, useAuth } from '@/hooks/useAuth';
 import { useThemeContext } from '@/context/ThemeContext';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import clsx from 'clsx';
+import logoDark from '@/assets/IMG/branding/mekai-logo-dark.svg';
+import logoLight from '@/assets/IMG/branding/mekai-logo-light.svg';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -76,9 +78,7 @@ export default function AuthPage() {
 
 
   const isSignup = tab === 'signup';
-  const logoSrc = isDark
-    ? '/IMG/branding/mekai-logo-dark.svg'
-    : '/IMG/branding/mekai-logo-light.svg';
+  const logoSrc = isDark ? logoDark : logoLight;
 
   useEffect(() => {
     if (!loading && session) {

@@ -1,6 +1,8 @@
 import { useThemeContext } from "@/context/ThemeContext";
 import { Link } from "react-router-dom";
 import { Sun, Moon, BookOpen, Languages, Vault, Users } from "lucide-react";
+import logoDark from "@/assets/IMG/branding/mekai-logo-dark.svg";
+import logoLight from "@/assets/IMG/branding/mekai-logo-light.svg";
 
 const features = [
   {
@@ -32,9 +34,7 @@ const features = [
 export default function LandingPage() {
   const { isDark, toggleTheme } = useThemeContext();
 
-  const logoSrc = isDark
-    ? "/IMG/branding/mekai-logo-dark.svg"
-    : "/IMG/branding/mekai-logo-light.svg";
+  const logoSrc = isDark ? logoDark : logoLight;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
