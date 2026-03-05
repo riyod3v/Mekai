@@ -2,7 +2,7 @@
 import { ocrFromImageElement, type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr';
 import { translateJapaneseToEnglishWithProvider } from '@/lib/translate';
 import { toRomaji } from '@/lib/romaji';
-import { isMangaOcrAvailable, localMangaOcr } from '@/lib/localServices';
+import { isMangaOcrAvailable, localMangaOcr } from '@/lib/manga-ocr-py-API';
 import type { TranslationProvider } from '@/lib/translate';
 
 // ─── Public types ─────────────────────────────────────────────

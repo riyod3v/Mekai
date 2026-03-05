@@ -20,7 +20,7 @@ import { OCRSelectionLayer, type SelectionRect } from '@/ui/components/OCRSelect
 import { TranslationOverlay } from '@/ui/components/TranslationOverlay';
 import { HistoryPanel } from '@/ui/components/HistoryPanel';
 import { Drawer } from '@/ui/components/Drawer';
-import { ocrAndTranslate } from '@/lib/aiPipeline';
+import { ocrAndTranslate } from '@/lib/browserAPI';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import {
