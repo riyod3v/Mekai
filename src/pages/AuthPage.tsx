@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { signIn, signUp, useAuth } from '@/hooks/useAuth';
+import { getSafeRedirectPath } from '@/lib/redirectUtils';
 import { useThemeContext } from '@/context/ThemeContext';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import clsx from 'clsx';
@@ -62,6 +63,7 @@ type Tab = 'login' | 'signup';
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { session, loading } = useAuth();
   const { isDark, toggleTheme } = useThemeContext();
   const notify = useNotification();
@@ -80,11 +82,14 @@ export default function AuthPage() {
   const isSignup = tab === 'signup';
   const logoSrc = isDark ? logoDark : logoLight;
 
+  // Validate the ?redirect= param against the allowlist before using it.
+  const redirectTo = getSafeRedirectPath(searchParams.get('redirect'), '/');
+
   useEffect(() => {
     if (!loading && session) {
-      navigate('/', { replace: true });
+      navigate(redirectTo, { replace: true });
     }
-  }, [session, loading, navigate]);
+  }, [session, loading, navigate, redirectTo]);
 
   function switchTab(t: Tab) {
     setTab(t);
@@ -120,7 +125,13 @@ export default function AuthPage() {
       if (tab === 'login') {
         await signIn(email, password);
       } else {
-        await signUp(email, password, username.trim(), role as 'reader' | 'translator');
+        const signUpData = await signUp(email, password, username.trim(), role as 'reader' | 'translator');
+        if (!signUpData.session) {
+          // Supabase did not create a session automatically (e.g. email confirmation
+          // is enabled). Attempt an explicit sign-in so the user is logged in
+          // immediately after account creation when possible.
+          await signIn(email, password);
+        }
         notify.success('Account created! Signing you in…');
       }
     } catch (err: unknown) {
