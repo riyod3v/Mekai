@@ -22,6 +22,6 @@ RUN python server.py --install-translate
 
 EXPOSE 5100
 
-# Bind to 0.0.0.0 so the container is reachable from outside.
-# Railway injects $PORT automatically; we default to 5100.
-CMD ["python", "server.py", "--host", "0.0.0.0", "--port", "5100"]
+# Use gunicorn for production.  Railway injects $PORT; default to 5100.
+# --timeout 120 gives models time to load on the first request.
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5100} --timeout 120 --workers 1 server:app"]

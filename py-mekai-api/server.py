@@ -67,6 +67,7 @@ else:
         "http://localhost:5174",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        "https://mekaiscans.vercel.app",
     ]
 CORS(app, origins=_allowed_origins)
 
@@ -252,6 +253,12 @@ def install_opus_ja_en() -> None:
 # ─── Health endpoints ─────────────────────────────────────────
 
 
+@app.route("/", methods=["GET"])
+def root():
+    """Root health check — confirms the server is running."""
+    return jsonify({"status": "ok", "service": "mekai-api"})
+
+
 @app.route("/ocr/health", methods=["GET"])
 def ocr_health():
     """Probe endpoint — returns 200 if manga-ocr can be loaded."""
@@ -370,9 +377,13 @@ if __name__ == "__main__":
         install_opus_ja_en()
         sys.exit(0)
 
-    print(f"[mekai] Starting local services on http://{args.host}:{args.port}")
+    # Railway injects $PORT; honour it if present, else use --port flag.
+    port = int(os.environ.get("PORT", args.port))
+
+    print(f"[mekai] Starting local services on http://{args.host}:{port}")
     print("[mekai] Allowed CORS origins:", _allowed_origins)
     print("[mekai] Endpoints:")
+    print("  GET  /                   — root health check")
     print("  GET  /ocr/health        — check manga-ocr availability")
     print("  POST /ocr               — run manga-ocr on an image (JSON or multipart)")
     print("  GET  /translate/health   — check translation availability")
@@ -383,4 +394,4 @@ if __name__ == "__main__":
     print("  Install Argos Translate model:        python server.py --install-argos")
     print()
 
-    app.run(host=args.host, port=args.port, debug=False)
+    app.run(host=args.host, port=port, debug=False)
