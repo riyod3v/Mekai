@@ -10,8 +10,8 @@
 # manga-ocr pulls in torch (~2 GB) on first install.
 # If you only want translation, comment out the manga-ocr line.
 
-flask>=3.0
-flask-cors>=4.0
+flask>=3.0,<4.0
+flask-cors>=4.0,<5.0
 gunicorn>=22.0
 Pillow>=10.0
 

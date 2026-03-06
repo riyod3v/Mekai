@@ -60,7 +60,12 @@ app = Flask(__name__)
 # MEKAI_ALLOWED_ORIGINS env var (comma-separated list of origins).
 _env_origins = os.environ.get("MEKAI_ALLOWED_ORIGINS", "")
 if _env_origins:
-    _allowed_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
+    # Split on commas or newlines, strip whitespace, drop blanks
+    _allowed_origins = [
+        o.strip()
+        for o in _env_origins.replace("\r", "").replace("\n", ",").split(",")
+        if o.strip()
+    ]
 else:
     _allowed_origins = [
         "http://localhost:5173",
