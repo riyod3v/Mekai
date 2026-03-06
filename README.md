@@ -1,9 +1,65 @@
 # Mekai — OCR-Assisted Manga Reading Platform
 
-A production-grade web application for reading untranslated manga scans with user-controlled OCR, selective translation replay, real-time shared uploads, and a persistent Word Vault.
+A production-grade web application for reading untranslated manga scans with user-controlled OCR selection, translation overlays, shared manga libraries, and a persistent Word Vault.
 
-Built with React 19 + Vite 7 + TypeScript + Tailwind CSS v4 + Supabase (Auth · Postgres · Storage · Realtime) + Tesseract.js.
+Built with React 19 + Vite 7 + TypeScript + Tailwind CSS v4 + Supabase (Auth · Postgres · Storage · Realtime) and an external Python OCR microservice.
 
+---
+
+## Core Architecture
+Mekai follows a hybrid client–service architecture.
+
+```
+Browser (React Frontend)
+        │
+        │
+        ▼
+Supabase Backend
+(Auth · Postgres · Storage · Realtime)
+        │
+        │
+        ▼
+External OCR Service (Python API)
+```
+---
+
+## OCR Processing Pipeline
+
+Unlike typical manga readers that OCR the entire page, Mekai performs selective OCR on user-selected regions.
+
+Step-by-step flow
+
+1️⃣ User selects a speech bubble using the OCRSelectionLayer.
+
+2️⃣ The browser crops the selected region using HTML Canvas.
+
+3️⃣ The cropped image is upscaled 2× to improve OCR accuracy.
+
+4️⃣ The image is uploaded to a temporary storage bucket:
+```
+Supabase Storage
+Bucket: ocr-temp
+```
+5️⃣ A signed URL is generated.
+
+6️⃣ The signed URL is sent to the Python OCR API.
+```
+POST /ocr
+{
+  imageUrl: "<signed-url>"
+}
+```
+7️⃣ The OCR service:
+
+• downloads the image
+
+• detects Japanese text
+
+• returns extracted text
+
+8️⃣ The frontend sends the extracted text to the translation service.
+
+9️⃣ The translated text is rendered as a speech bubble overlay.
 ---
 
 ## Features at a Glance
