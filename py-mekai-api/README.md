@@ -101,10 +101,10 @@ frontend detects it automatically — no `.env` changes needed.
 ```
 
 - On startup the frontend probes `/ocr/health` and `/translate/health`.
-- If available → uses local services (higher quality).
-- If unavailable or 503 → falls back to Tesseract.js + MyMemory silently.
-- On Vercel production the local server is never reachable; the deployed
-  app uses Tesseract.js + MyMemory exactly as before.
+- If available → uses manga-ocr for OCR and OPUS-MT for translation.
+- If unavailable or 503 → OCR and translation are not available (no browser fallbacks).
+- On Vercel production, set `VITE_MEKAI_API_URL` to the hosted server URL
+  (e.g. Railway) so the deployed app can reach the API.
 
 ---
 
@@ -114,7 +114,7 @@ The server tries providers in this order:
 
 1. **Argos Translate** — if the ja→en package is installed
 2. **OPUS-MT (MarianMT)** — if `Helsinki-NLP/opus-mt-ja-en` is in the HuggingFace cache
-3. → **503** — frontend falls back to MyMemory automatically
+3. → **503** — frontend shows an error (no browser fallbacks)
 
 ---
 
@@ -138,7 +138,7 @@ python server.py --port 5200
 Then add to your `.env.local`:
 
 ```
-VITE_LOCAL_SERVER_URL=http://localhost:5200
+VITE_MEKAI_API_URL=http://localhost:5200
 ```
 
 ---
@@ -161,7 +161,7 @@ Comment out the translation sections in `requirements.txt`, then:
 
 ```powershell
 uv pip install -r requirements.txt
-python server.py   # /translate/health returns 503, frontend uses MyMemory
+python server.py   # /translate/health returns 503, frontend shows translation unavailable
 ```
 
 ---
