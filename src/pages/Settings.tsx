@@ -9,6 +9,9 @@ import type { Profile } from '@/types';
 
 const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
 
+/** Allowlist for avatar uploads — SVG/HTML excluded to prevent stored XSS. */
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
+
 function validateUsername(v: string): string {
   if (v.length < 3) return 'At least 3 characters required.';
   if (v.length > 24) return 'Maximum 24 characters.';
@@ -135,6 +138,11 @@ export default function SettingsPage() {
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!(ALLOWED_AVATAR_TYPES as readonly string[]).includes(file.type)) {
+      notify.error('Only JPEG, PNG, WebP, or GIF images are allowed.');
+      e.target.value = '';
+      return;
+    }
     if (file.size > 2 * 1024 * 1024) { notify.error('Image must be under 2 MB.'); return; }
     setAvatarUploading(true);
     try {

@@ -10,6 +10,8 @@ function coverPath(userId: string, mangaId: string): string {
  * Upload (or replace) a manga cover image.
  * Returns the public URL of the uploaded file.
  */
+const ALLOWED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
 export async function uploadMangaCover({
   userId,
   mangaId,
@@ -19,6 +21,10 @@ export async function uploadMangaCover({
   mangaId: string;
   file: File;
 }): Promise<string> {
+  if (!ALLOWED_COVER_TYPES.includes(file.type)) {
+    throw new Error('Cover image must be a JPEG, PNG, WebP, or GIF file.');
+  }
+
   const path = coverPath(userId, mangaId);
 
   const { error: uploadError } = await supabase.storage

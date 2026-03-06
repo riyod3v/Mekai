@@ -64,12 +64,11 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     .single();
 
   if (error) {
+    // Log only non-sensitive DB error metadata — do NOT log the payload,
+    // which may contain the user's translated text and OCR regions.
     console.error('[word_vault] insert error:', {
       message: error.message,
-      details: error.details,
-      hint: error.hint,
       code: error.code,
-      payload,
     });
     throw new Error(`Word Vault insert failed: ${error.message}`);
   }
@@ -81,10 +80,17 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
 export async function deleteFromWordVault(id: string): Promise<void> {
   if (!id) throw new TypeError('id must be a non-empty string');
 
+  // Require authentication and scope the delete to the signed-in user's rows
+  // to prevent IDOR — a different authenticated user cannot delete someone
+  // else's entry even if they know the UUID.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated.');
+
   const { error } = await supabase
     .from('word_vault')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', user.id); // IDOR guard: only deletes rows owned by the caller
 
   if (error) throw new Error(error.message);
 }
