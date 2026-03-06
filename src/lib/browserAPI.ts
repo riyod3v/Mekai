@@ -1,5 +1,5 @@
 // src/lib/aiPipeline.ts
-import { ocrFromImageElement, type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr';
+import { type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr';
 import { translateJapaneseToEnglishWithProvider } from '@/lib/translate';
 import { toRomaji } from '@/lib/romaji';
 import { isMangaOcrAvailable, localMangaOcr } from '@/lib/manga-ocr-py-API';
@@ -12,7 +12,7 @@ export type OcrTranslateResult = {
   translated: string;
   romaji: string | null;
   /** Which OCR engine produced the text. */
-  ocrSource: 'manga-ocr' | 'tesseract';
+  ocrSource: 'manga-ocr';
   /** Which translation provider produced the translation. */
   translationProvider: TranslationProvider;
 };
@@ -23,12 +23,8 @@ export type OcrTranslateResult = {
  * Run OCR on a selected region of a manga page, then translate and
  * convert to Romaji.
  *
- * OCR provider priority:
- *   1. Local **manga-ocr** server (much better for manga Japanese)
- *   2. Browser **Tesseract.js** (always available)
- *
- * Translation provider priority is handled inside `translateJapaneseToEnglish`.
- *
+ * Both OCR and translation use the local py-mekai-api companion server.
+ * Throws if either service is unavailable.
  * @param imgEl - The fully-loaded source HTMLImageElement.
  * @param bbox  - Normalised bounding box { x, y, w, h } (0..1).
  * @returns     OCR text, English translation, and Romaji.
@@ -37,39 +33,28 @@ export async function ocrAndTranslate(
   imgEl: HTMLImageElement,
   bbox: BBox,
 ): Promise<OcrTranslateResult> {
-  let ocrText = '';
-  let ocrSource: OcrTranslateResult['ocrSource'] = 'tesseract';
+  const ocrSource: OcrTranslateResult['ocrSource'] = 'manga-ocr';
 
-  // 0️⃣  Pre-flight: skip OCR entirely if region has no detectable ink
+  // Pre-flight: skip OCR entirely if region has no detectable ink
   if (!hasInkContent(imgEl, bbox)) {
-    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'MyMemory' };
+    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api' };
   }
 
-  // 1️⃣  Try local manga-ocr (higher quality for manga)
-  try {
-    if (await isMangaOcrAvailable()) {
-      const base64 = cropToDataUrl(imgEl, bbox);
-      ocrText = await localMangaOcr(base64);
-      ocrSource = 'manga-ocr';
-    }
-  } catch {
-    // Fall through to Tesseract
-    ocrText = '';
+  // manga-ocr via local py-mekai-api server
+  if (!(await isMangaOcrAvailable())) {
+    throw new Error(
+      'manga-ocr is not running. Start py-mekai-api/server.py first.',
+    );
   }
-
-  // 2️⃣  Fall back to browser Tesseract.js
-  if (!ocrText) {
-    const raw = await ocrFromImageElement(imgEl, bbox, 'jpn');
-    ocrText = raw.trim();
-    ocrSource = 'tesseract';
-  }
+  const base64 = cropToDataUrl(imgEl, bbox);
+  const ocrText = await localMangaOcr(base64);
 
   if (!ocrText) {
-    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'MyMemory' };
+    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api' };
   }
 
   let translated = '';
-  let translationProvider: OcrTranslateResult['translationProvider'] = 'MyMemory';
+  let translationProvider: OcrTranslateResult['translationProvider'] = 'py-mekai-api';
   try {
     const result = await translateJapaneseToEnglishWithProvider(ocrText);
     translated = result.translated;

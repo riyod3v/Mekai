@@ -58,9 +58,9 @@ interface Overlay {
   /** 'published' overlays are read-only for non-translator users */
   source: 'history' | 'published';
   /** Which OCR engine produced ocrText (undefined for rows loaded from DB) */
-  ocrSource?: 'manga-ocr' | 'tesseract';
+  ocrSource?: 'manga-ocr';
   /** Which translation provider produced translated (undefined for DB rows) */
-  translationProvider?: 'py-mekai-api' | 'MyMemory';
+  translationProvider?: 'py-mekai-api';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────

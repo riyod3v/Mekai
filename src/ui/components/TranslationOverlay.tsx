@@ -12,7 +12,7 @@ interface Props {
   /** Original OCR Japanese text — used for word vault save */
   ocrText?: string;
   /** Which OCR engine produced ocrText (stored; not rendered in normal mode) */
-  ocrSource?: 'manga-ocr' | 'tesseract';
+  ocrSource?: 'manga-ocr';
   /** Which translation provider produced translated (stored; not rendered in normal mode) */
   translationProvider?: TranslationProvider;
   /** Whether this overlay is being highlighted from the History panel */
