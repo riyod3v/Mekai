@@ -16,6 +16,7 @@ python-multipart>=0.0.9        # required for UploadFile support
 
 # ── Image handling ─────────────────────────────────────────────
 Pillow>=10.0,<11.0
+opencv-python-headless>=4.8,<5.0
 
 # ── OCR engine (CPU-only PaddlePaddle + PaddleOCR) ────────────
 # paddlepaddle CPU-only — ~90 MB, no CUDA/cuDNN deps

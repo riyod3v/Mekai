@@ -73,7 +73,7 @@ function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
   canvas.width = scaledW;
   canvas.height = scaledH;
 
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Could not get 2D canvas context for OCR crop.');
 
   ctx.imageSmoothingEnabled = true;
@@ -101,7 +101,7 @@ function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
  * `cropToDataUrl` path used by manga-ocr (which benefits from the same cleanup).
  */
 function preprocessCanvasForManga(canvas: HTMLCanvasElement): void {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return;
 
   const { width: w, height: h } = canvas;
@@ -237,7 +237,7 @@ function labelComponents(
  * as produced by `preprocessCanvasForManga`.
  */
 function tightenToInk(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return canvas;
 
   const { width: w, height: h } = canvas;
@@ -377,7 +377,7 @@ export function hasInkContent(imgEl: HTMLImageElement, bbox: BBox): boolean {
   const canvas = cropToCanvas(imgEl, bbox);
   preprocessCanvasForManga(canvas);
 
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return true; // permissive on context failure
 
   const { width: w, height: h } = canvas;

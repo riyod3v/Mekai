@@ -27,7 +27,7 @@ const _isLocal =
 const BASE_API_URL: string = _isLocal
   ? ((import.meta.env.VITE_LOCAL_API_URL as string | undefined) ?? 'http://localhost:5100')
   : ((import.meta.env.VITE_OCR_API_URL as string | undefined) ?? '');
-
+console.log("Resolved OCR API:", BASE_API_URL);
 /** How long (ms) to wait for a health probe before treating it as unavailable. */
 const PROBE_TIMEOUT_MS = 3_000;
 

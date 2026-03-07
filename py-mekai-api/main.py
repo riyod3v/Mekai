@@ -92,11 +92,12 @@ def get_paddle_ocr():
                 use_angle_cls=True,
                 use_gpu=False,
                 show_log=False,
-                # Use the "server" det model for better accuracy on speech bubbles
                 det_model_dir=None,   # auto-download default det model
                 rec_model_dir=None,   # auto-download default japan rec model
                 cls_model_dir=None,   # auto-download default cls model
                 det_db_score_mode="slow",
+                det_db_box_thresh=0.5,
+                rec_batch_num=6,
             )
             log.info("PaddleOCR ready.")
         except Exception as e:
@@ -266,6 +267,49 @@ def _decode_base64_image(image_b64: str) -> Image.Image:
     return Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
 
+def _preprocess_manga_image(img_array):
+    """
+    Prepare a manga text region for PaddleOCR.
+
+    Pipeline: grayscale → CLAHE → adaptive threshold → morphological
+    close → slight dilation → optional denoise.  Returns a cleaned
+    grayscale numpy array.
+    """
+    import cv2
+
+    # 1. Grayscale
+    if len(img_array.shape) == 3:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+
+    # 2. CLAHE — adaptive contrast enhancement
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+
+    # 3. Adaptive threshold — binarise text vs background
+    binary = cv2.adaptiveThreshold(
+        enhanced, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        blockSize=11,
+        C=2,
+    )
+
+    # 4. Morphological close — bridge small gaps in strokes
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close)
+
+    # 5. Slight dilation — thicken thin strokes for recognition
+    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    dilated = cv2.dilate(closed, kernel_dilate, iterations=1)
+
+    # 6. Light denoise
+    denoised = cv2.fastNlMeansDenoising(dilated, h=10)
+
+    return denoised
+
+
 def _run_paddle_ocr(img: Image.Image) -> str:
     """
     Run PaddleOCR on a PIL Image and return concatenated text.
@@ -278,6 +322,7 @@ def _run_paddle_ocr(img: Image.Image) -> str:
 
     ocr = get_paddle_ocr()
     img_array = np.array(img)
+    img_array = _preprocess_manga_image(img_array)
     results = ocr.ocr(img_array, cls=True)  # type: ignore[union-attr]
 
     if not results:
