@@ -23,7 +23,8 @@ paddlepaddle>=2.6.0,<3.0
 paddleocr>=2.9.0,<3.0
 
 # ── Translation — OPUS-MT ja→en (Helsinki-NLP/opus-mt-ja-en) ──
-# torch is already pulled in transitively by paddlepaddle/paddleocr.
-# We only need the transformers tokenizer/model wrapper + sentencepiece.
+# torch is required for OPUS-MT models
+torch>=2.0.0,<2.5.0
 transformers>=4.40,<5.0
 sentencepiece>=0.2.0
+sacremoses>=2.0.0

@@ -10,9 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Set environment variables for CPU-only PyTorch
+ENV TORCH_DISABLE_SHM=1
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+ENV CUDA_VISIBLE_DEVICES=-1
+
 COPY requirements.txt .
 
-# Install Python deps — no GPU, no torch
+# Install Python deps — CPU only versions
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
