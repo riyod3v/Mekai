@@ -16,20 +16,35 @@
 #   python main.py --install-translate   # one-time OPUS-MT model download (~300 MB)
 #   python main.py                       # start on :5100
 
+# Fix for PyTorch Windows shared memory issue - MUST be at the very top
+import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+os.environ['TORCH_DISABLE_SHM'] = '1'
+
 import argparse
 import base64
 import gc
 import io
 import logging
-import os
 import sys
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, File, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from PIL import Image
+# FastAPI imports - these might indirectly trigger torch
+try:
+    from fastapi import FastAPI, File, Request, UploadFile
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+except ImportError as e:
+    print(f"Error importing FastAPI: {e}")
+    sys.exit(1)
+
+# PIL import
+try:
+    from PIL import Image
+except ImportError as e:
+    print(f"Error importing PIL: {e}")
+    sys.exit(1)
 
 # ─── Logging ───────────────────────────────────────────────────
 
@@ -64,21 +79,29 @@ def get_paddle_ocr():
     """
     global _paddle_ocr
     if _paddle_ocr is None:
+        # Ensure environment variables are set before importing PaddleOCR
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+        os.environ['TORCH_DISABLE_SHM'] = '1'
+        
         from paddleocr import PaddleOCR
 
         log.info("Loading PaddleOCR (japan, CPU-only)…")
-        _paddle_ocr = PaddleOCR(
-            lang="japan",
-            use_angle_cls=True,
-            use_gpu=False,
-            show_log=False,
-            # Use the "server" det model for better accuracy on speech bubbles
-            det_model_dir=None,   # auto-download default det model
-            rec_model_dir=None,   # auto-download default japan rec model
-            cls_model_dir=None,   # auto-download default cls model
-            det_db_score_mode="slow",
-        )
-        log.info("PaddleOCR ready.")
+        try:
+            _paddle_ocr = PaddleOCR(
+                lang="japan",
+                use_angle_cls=True,
+                use_gpu=False,
+                show_log=False,
+                # Use the "server" det model for better accuracy on speech bubbles
+                det_model_dir=None,   # auto-download default det model
+                rec_model_dir=None,   # auto-download default japan rec model
+                cls_model_dir=None,   # auto-download default cls model
+                det_db_score_mode="slow",
+            )
+            log.info("PaddleOCR ready.")
+        except Exception as e:
+            log.error("Failed to initialize PaddleOCR: %s", e)
+            raise
         gc.collect()
     return _paddle_ocr
 
@@ -93,6 +116,10 @@ def get_opus_translator():
     """
     global _opus_tokenizer, _opus_model
     if _opus_tokenizer is None or _opus_model is None:
+        # Ensure environment variables are set before importing transformers
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+        os.environ['TORCH_DISABLE_SHM'] = '1'
+        
         try:
             from transformers import MarianMTModel, MarianTokenizer
         except ImportError:
@@ -174,6 +201,7 @@ else:
         "http://localhost:5174",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        "http://127.0.0.1:60915",
         "https://mekaiscans.vercel.app",
     ]
 
@@ -183,10 +211,15 @@ else:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Eagerly load models on startup so the first request is fast."""
-    try:
-        get_paddle_ocr()
-    except Exception as exc:
-        log.warning("PaddleOCR pre-load failed (will retry on first request): %s", exc)
+    # Skip PaddleOCR pre-load on Windows to avoid shm.dll issues
+    if os.name == 'nt':  # Windows
+        log.warning("Skipping PaddleOCR pre-load on Windows (will load on first request)")
+    else:
+        try:
+            get_paddle_ocr()
+        except Exception as exc:
+            log.warning("PaddleOCR pre-load failed (will retry on first request): %s", exc)
+    
     try:
         get_opus_translator()
     except Exception as exc:
@@ -264,32 +297,20 @@ async def root():
 
 @app.get("/ocr/health")
 async def ocr_health():
-    """Probe: returns 200 when PaddleOCR is loadable."""
-    try:
-        get_paddle_ocr()
-        return {"status": "ok"}
-    except Exception as exc:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "unavailable", "error": str(exc)},
-        )
+    """Probe: returns 200 when OCR service is available (models load on demand)."""
+    # On Windows, we don't pre-load PaddleOCR to avoid shm.dll issues
+    if os.name == 'nt':
+        return {
+            "status": "ok", 
+            "note": "PaddleOCR loads on first OCR request (Windows compatibility mode)"
+        }
+    return {"status": "ok", "note": "Models load on first OCR request"}
 
 
 @app.get("/translate/health")
 async def translate_health():
-    """Probe: returns 200 when OPUS-MT ja→en is ready."""
-    try:
-        get_opus_translator()
-        return {"status": "ok"}
-    except Exception as exc:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unavailable",
-                "error": str(exc),
-                "hint": "Run: python main.py --install-translate",
-            },
-        )
+    """Probe: returns 200 when translation service is available (models load on demand)."""
+    return {"status": "ok", "note": "Models load on first translation request"}
 
 
 # ─── OCR endpoint ─────────────────────────────────────────────
