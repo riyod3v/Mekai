@@ -23,7 +23,7 @@ paddlepaddle>=2.6.0,<3.0
 paddleocr>=2.9.0,<3.0
 
 # ── Translation — OPUS-MT ja→en (Helsinki-NLP/opus-mt-ja-en) ──
-# torch is required for OPUS-MT models
-torch>=2.0.0,<2.5.0
+# torch is required for OPUS-MT models (2.6+ required for security fix)
+torch>=2.6.0,<2.7.0
 transformers>=4.40,<5.0
 sentencepiece>=0.2.0

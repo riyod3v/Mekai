@@ -27,7 +27,8 @@ COPY main.py .
 RUN python main.py --install-ocr
 
 # Pre-download OPUS-MT ja→en model (~300 MB).
-RUN python main.py --install-translate
+# Note: This may fail on some environments, but will download on first request
+RUN python main.py --install-translate || echo "Model download skipped - will download on first request"
 
 EXPOSE 5100
 
