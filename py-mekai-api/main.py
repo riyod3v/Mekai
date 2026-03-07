@@ -96,7 +96,7 @@ def get_paddle_ocr():
                 rec_model_dir=None,   # auto-download default japan rec model
                 cls_model_dir=None,   # auto-download default cls model
                 det_db_score_mode="slow",
-                det_db_box_thresh=0.5,
+                det_db_box_thresh=0.3,
                 rec_batch_num=6,
             )
             log.info("PaddleOCR ready.")
@@ -271,11 +271,15 @@ def _preprocess_manga_image(img_array):
     """
     Prepare a manga text region for PaddleOCR.
 
-    Pipeline: grayscale → CLAHE → adaptive threshold → morphological
-    close → slight dilation → optional denoise.  Returns a cleaned
-    grayscale numpy array.
+    Pipeline: grayscale → CLAHE → unsharp sharpen.
+
+    Thresholding / dilation is intentionally omitted — manga has thin
+    kana strokes that binarisation destroys, causing PaddleOCR to miss
+    entire text lines.  A light sharpen improves edge definition without
+    altering stroke width.
     """
     import cv2
+    import numpy as np
 
     # 1. Grayscale
     if len(img_array.shape) == 3:
@@ -287,27 +291,15 @@ def _preprocess_manga_image(img_array):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
 
-    # 3. Adaptive threshold — binarise text vs background
-    binary = cv2.adaptiveThreshold(
-        enhanced, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        blockSize=11,
-        C=2,
-    )
+    # 3. Sharpen — boost edges without altering stroke geometry
+    kernel = np.array([
+        [ 0, -1,  0],
+        [-1,  5, -1],
+        [ 0, -1,  0],
+    ], dtype=np.float32)
+    sharpened = cv2.filter2D(enhanced, -1, kernel)
 
-    # 4. Morphological close — bridge small gaps in strokes
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close)
-
-    # 5. Slight dilation — thicken thin strokes for recognition
-    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    dilated = cv2.dilate(closed, kernel_dilate, iterations=1)
-
-    # 6. Light denoise
-    denoised = cv2.fastNlMeansDenoising(dilated, h=10)
-
-    return denoised
+    return sharpened
 
 
 def _run_paddle_ocr(img: Image.Image) -> str:
