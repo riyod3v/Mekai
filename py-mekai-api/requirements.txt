@@ -1,6 +1,6 @@
 # Mekai API — Lightweight PaddleOCR backend
 #
-# Target: Railway free tier (500 MB RAM limit)
+# Target: Railway free tier (500 MB RAM limit, 4 GB image limit)
 # Stack:  FastAPI + PaddleOCR (CPU-only) + OPUS-MT (Helsinki-NLP/opus-mt-ja-en)
 #
 # Install (x86_64):
@@ -23,7 +23,8 @@ paddlepaddle>=2.6.0,<3.0
 paddleocr>=2.9.0,<3.0
 
 # ── Translation — OPUS-MT ja→en (Helsinki-NLP/opus-mt-ja-en) ──
-# torch is required for OPUS-MT models (2.6+ required for security fix)
-torch>=2.6.0,<2.7.0
+# torch CPU-only (~200 MB instead of ~2.5 GB with CUDA)
+# Install separately via: pip install torch --index-url https://download.pytorch.org/whl/cpu
+# The Dockerfile handles this automatically.
 transformers>=4.40,<5.0
 sentencepiece>=0.2.0

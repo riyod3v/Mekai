@@ -20,9 +20,12 @@ ENV HF_HOME=/app/models
 # Create models directory
 RUN mkdir -p /app/models
 
+# Install CPU-only PyTorch FIRST (saves ~2.3 GB vs full torch with CUDA)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 COPY requirements.txt .
 
-# Install Python deps — CPU only versions
+# Install remaining Python deps (torch already installed above)
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .

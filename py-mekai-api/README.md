@@ -11,7 +11,7 @@ PaddlePaddle + PaddleOCR instead of the heavier PyTorch/manga-ocr stack.
 | Service | Technology | Notes |
 |---------|-----------|-------|
 | **OCR** | [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (lang=japan) | CPU-only, ~90 MB wheel + ~80 MB models |
-| **Translation** | [Argos Translate](https://github.com/argosopentech/argos-translate) ja→en | ~100 MB model, runs offline |
+| **Translation** | [OPUS-MT](https://huggingface.co/Helsinki-NLP/opus-mt-ja-en) (MarianMT) ja→en | ~300 MB model via HuggingFace transformers |
 
 ---
 
@@ -39,7 +39,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3 — Download the Argos Translate ja→en model (one-time, ~100 MB)
+### 3 — Download the OPUS-MT ja→en model (one-time, ~300 MB)
 
 ```bash
 python main.py --install-translate
@@ -122,12 +122,12 @@ VITE_MEKAI_API_URL=https://your-railway-deployment.up.railway.app
 ┌─────────────────────────┐         ┌──────────────────────────┐
 │  React app (Vite)       │──POST──▶│  main.py :5100           │
 │  localhost:5173          │         │    /ocr       PaddleOCR  │
-│                          │◀─JSON──│    /translate  Argos MT   │
+│                          │◀─JSON──│    /translate  OPUS-MT    │
 └─────────────────────────┘         └──────────────────────────┘
 ```
 
 - Frontend probes `/ocr/health` and `/translate/health` on startup.
-- If available → uses PaddleOCR for recognition and Argos for translation.
+- If available → uses PaddleOCR for recognition and OPUS-MT for translation.
 - If unavailable → shows error (no browser-side fallbacks).
 - In production, set `VITE_MEKAI_API_URL` to the Railway deployment URL.
 
@@ -140,7 +140,7 @@ VITE_MEKAI_API_URL=https://your-railway-deployment.up.railway.app
 | GET | `/` | Root health check |
 | GET | `/ocr/health` | 200 when PaddleOCR is loaded |
 | POST | `/ocr` | JSON `{ "image": "<base64>" }` or multipart `file` → `{ "text": "..." }` |
-| GET | `/translate/health` | 200 when Argos ja→en is ready |
+| GET | `/translate/health` | 200 when OPUS-MT ja→en is ready |
 | POST | `/translate` | `{ "q": "...", "source": "ja", "target": "en" }` → `{ "translatedText": "..." }` |
 
 ---
@@ -149,10 +149,14 @@ VITE_MEKAI_API_URL=https://your-railway-deployment.up.railway.app
 
 Railway auto-detects the `Dockerfile`. The image:
 
-1. Installs CPU-only PaddlePaddle + PaddleOCR (~170 MB)
-2. Pre-downloads OCR models (~80 MB)
-3. Pre-downloads Argos ja→en model (~100 MB)
-4. Runs Uvicorn with 1 worker — total RSS stays under ~400 MB
+1. Installs **CPU-only PyTorch** first (~200 MB vs ~2.5 GB with CUDA)
+2. Installs CPU-only PaddlePaddle + PaddleOCR (~170 MB)
+3. Installs transformers + sentencepiece for OPUS-MT
+4. Pre-downloads OCR models (~80 MB)
+5. Pre-downloads OPUS-MT ja→en model (~300 MB)
+6. Runs Uvicorn with 1 worker
+
+> Docker image size: ~3–3.5 GB (fits within Railway's 4 GB limit).
 
 Railway also reads `railway.json` for deploy config. The `PORT` env
 var is injected automatically.
@@ -194,9 +198,14 @@ python main.py
 
 ## Memory footprint comparison
 
-| Component | Old (manga-ocr) | New (PaddleOCR) |
-|-----------|-----------------|-----------------|
-| ML framework | PyTorch (~200 MB RSS) | PaddlePaddle (~90 MB RSS) |
+| Component | Old (manga-ocr) | New (PaddleOCR + OPUS-MT) |
+|-----------|-----------------|---------------------------|
+| ML framework | PyTorch full (~2.5 GB disk) | PaddlePaddle (~90 MB) + PyTorch CPU-only (~200 MB) |
 | OCR model | manga-ocr (~400 MB disk) | PaddleOCR japan (~80 MB disk) |
-| Translation | OPUS-MT (~300 MB disk) | Argos Translate (~100 MB disk) |
-| **Total RSS** | **~600–800 MB** (OOM on Railway) | **~300–400 MB** (within 500 MB) |
+| Translation | manga-ocr (same model) | OPUS-MT (~300 MB disk) |
+| **Docker image** | **~7+ GB** | **~3–3.5 GB** (within Railway 4 GB limit) |
+| **Total RSS** | **~600–800 MB** (OOM on Railway) | **~400–500 MB** |
+
+> **Known issue:** PyTorch is still required for OPUS-MT translation.
+> A future improvement could swap to a lighter translation engine
+> (e.g. CTranslate2 or Argos Translate) to eliminate the PyTorch dependency.
