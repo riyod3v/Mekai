@@ -1,5 +1,6 @@
+/*
 import { useEffect, useRef } from 'react';
-import { drawBubbleOverlay } from '@/lib/roboflowDetection';
+// import { drawBubbleOverlay } from '@/lib/roboflowDetection';
 
 interface BubbleOverlayProps {
   imageUrl: string;
@@ -28,7 +29,7 @@ export function BubbleOverlay({ imageUrl, bubbles, visible = true }: BubbleOverl
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw bubbles
-    drawBubbleOverlay(canvas, bubbles);
+    // drawBubbleOverlay(canvas, bubbles);
   }, [bubbles, visible]);
 
   if (!visible) return null;
@@ -46,7 +47,7 @@ export function BubbleOverlay({ imageUrl, bubbles, visible = true }: BubbleOverl
             const canvas = canvasRef.current;
             canvas.width = imageRef.current!.naturalWidth;
             canvas.height = imageRef.current!.naturalHeight;
-            drawBubbleOverlay(canvas, bubbles);
+            // drawBubbleOverlay(canvas, bubbles);
           }
         }}
       />
@@ -58,3 +59,4 @@ export function BubbleOverlay({ imageUrl, bubbles, visible = true }: BubbleOverl
     </div>
   );
 }
+*/

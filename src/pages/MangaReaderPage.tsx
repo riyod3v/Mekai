@@ -18,7 +18,6 @@ import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import { ErrorState } from '@/ui/components/ErrorState';
 import { OCRSelectionLayer, type SelectionRect } from '@/ui/components/OCRSelectionLayer';
 import { TranslationOverlay } from '@/ui/components/TranslationOverlay';
-import { EnhancedTranslationOverlay } from '@/ui/components/EnhancedTranslationOverlay';
 import { BatchTranslationPanel } from '@/ui/components/BatchTranslationPanel';
 import { HistoryPanel } from '@/ui/components/HistoryPanel';
 import { Drawer } from '@/ui/components/Drawer';
@@ -158,7 +157,7 @@ function ReaderPageItem({
 
         {/* In-bubble translation overlays */}
         {overlays.map((ov) => (
-          <EnhancedTranslationOverlay
+          <TranslationOverlay
             key={ov.key}
             id={ov.id}
             region={ov.region}
@@ -168,7 +167,6 @@ function ReaderPageItem({
             ocrSource={ov.ocrSource}
             translationProvider={ov.translationProvider}
             highlighted={highlightId === ov.id}
-            readOnly={ov.source === 'published' && !isChapterOwner}
             onDismiss={onDismissOverlay}
             onSaveToVault={onSaveToVault}
           />

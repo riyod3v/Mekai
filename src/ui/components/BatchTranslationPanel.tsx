@@ -3,7 +3,7 @@ import { Loader2, Play, Pause, CheckCircle, AlertCircle, Wand2 } from 'lucide-re
 import clsx from 'clsx';
 import { ocrAndTranslate } from '@/lib/browserAPI';
 import { detectSpeechBubbles, bubblesToRegions } from '@/lib/bubbleDetection';
-import { BubbleOverlay } from './BubbleOverlay';
+// import { BubbleOverlay } from './BubbleOverlay';
 import type { SelectionRect } from './OCRSelectionLayer';
 
 interface BubbleToTranslate {
@@ -165,7 +165,7 @@ export function BatchTranslationPanel({
       <button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-4 right-4 bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 transition-colors z-30"
-        title="Auto-translate all speech bubbles"
+        title="Auto-translate text regions"
       >
         <Wand2 className="w-6 h-6" />
       </button>
@@ -174,7 +174,8 @@ export function BatchTranslationPanel({
 
   return (
     <>
-      {/* Visual overlay for detected bubbles */}
+      {/* Visual overlay for detected bubbles - DISABLED */}
+      {/* 
       {imageRef.current && rawBubbles.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-35">
           <BubbleOverlay
@@ -184,6 +185,7 @@ export function BatchTranslationPanel({
           />
         </div>
       )}
+      */}
       
       <div className="fixed inset-0 bg-black/50 flex items-end justify-end z-40">
         <div className="bg-white h-96 w-full max-w-md shadow-xl flex flex-col">
