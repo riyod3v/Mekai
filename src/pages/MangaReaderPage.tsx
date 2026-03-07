@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
-  Scan, History, X, List, Square, Wand2,
+  Scan, History, X, List, Square, Wand2, Menu, Moon, Sun,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { useNotification } from '@/context/NotificationContext';
@@ -254,12 +254,22 @@ export default function MangaReaderPage() {
   const [showBatchTranslation, setShowBatchTranslation] = useState(false);
   const [autoDetectedBubbles, setAutoDetectedBubbles] = useState<Array<{ pageIndex: number; region: RegionBox }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: historyRows } = useTranslationHistory(chapterId ?? '');
   const addHistory = useAddTranslationHistory();
   const deleteHistory = useDeleteTranslationHistory(chapterId ?? '');
   const notify = useNotification();
+
+  // ── Theme toggle ─────────────────────────────────────────────
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  const toggleTheme = () => setIsDark(!isDark);
 
   // ── Sync user overlays from persisted history ─────────────
   useEffect(() => {
@@ -664,119 +674,150 @@ export default function MangaReaderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
-      {/* ── Top bar (CSS grid: left / center / right) ────────── */}
-      <header className="sticky top-0 z-40 grid grid-cols-[auto_1fr_auto] items-center gap-2 px-4 py-3 bg-white/90 dark:bg-gray-950/90 backdrop-blur border-b border-gray-200 dark:border-white/10">
-        {/* Left: Back + prev/next chapter */}
-        <div className="flex items-center gap-1 shrink-0">
+  <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
+    {/* ── Top bar with hamburger menu and centered title ────────── */}
+    <header className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-white/10 shadow-sm">
+      
+      {/* Left: Back button */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => navigate(`/manga/${chapter.manga_id}`)}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-indigo-300 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Back</span>
+        </button>
+      </div>
+
+      {/* Center: Chapter title */}
+      <div className="flex flex-col items-center">
+        <h1 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          {chapter?.title || `Chapter ${chapter?.chapter_number}`}
+        </h1>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {readingMode === 'scroll' ? 'Scroll Mode' : 'Page Mode'}
+        </p>
+      </div>
+
+      {/* Right: Theme toggle and Hamburger menu */}
+      <div className="flex items-center gap-2">
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          title="Toggle theme"
+        >
+          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+
+        {/* Hamburger menu */}
+        <div className="relative">
           <button
-            onClick={() => navigate(`/manga/${chapter.manga_id}`)}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-indigo-300 transition-colors shrink-0"
+            onClick={() => setToolsMenuOpen(!toolsMenuOpen)}
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            title="Tools"
           >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Back</span>
+            <Menu className="h-4 w-4" />
           </button>
 
-          <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
+          {/* Dropdown menu */}
+          {toolsMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+              {/* OCR mode toggle */}
+              <button
+                onClick={() => {
+                  toggleSelectionMode();
+                  setToolsMenuOpen(false);
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Scan className="h-4 w-4" />
+                {selectionMode ? 'Exit OCR' : 'Enable OCR'}
+              </button>
 
-          {prevChapter ? (
-            <Link
-              to={`/read/${prevChapter.id}`}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Ch.{prevChapter.chapter_number}</span>
-            </Link>
-          ) : (
-            <span className="px-2 py-1.5 text-xs text-gray-600">
-              <ChevronLeft className="h-3.5 w-3.5 inline" />
-            </span>
-          )}
-          {nextChapter ? (
-            <Link
-              to={`/read/${nextChapter.id}`}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <span className="hidden sm:inline">Ch.{nextChapter.chapter_number}</span>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          ) : (
-            <span className="px-2 py-1.5 text-xs text-gray-600">
-              <ChevronRight className="h-3.5 w-3.5 inline" />
-            </span>
-          )}
-        </div>
-
-        {/* Center: chapter title (always centered) */}
-        <div className="min-w-0 text-center">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-            Chapter {chapter.chapter_number}
-            {chapter.title ? ` — ${chapter.title}` : ''}
-          </p>
-        </div>
-
-        {/* Right: tool buttons */}
-        <div className="flex items-center gap-1 shrink-0">
-          {/* OCR mode toggle */}
-          <button
-            onClick={toggleSelectionMode}
-            title={selectionMode ? 'Exit OCR mode' : 'Enable OCR selection'}
-            className={clsx(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-              selectionMode
-                ? 'bg-indigo-600 text-white hover:bg-indigo-500'
-                : 'text-gray-400 hover:text-white hover:bg-white/10',
-            )}
-          >
-            <Scan className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{selectionMode ? 'OCR On' : 'OCR'}</span>
-          </button>
-
-          {/* Batch translation toggle - only for translators */}
-          {isTranslator && (
-            <button
-              onClick={() => setShowBatchTranslation(!showBatchTranslation)}
-              title={showBatchTranslation ? 'Close batch translation' : 'Auto-translate all speech bubbles'}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                showBatchTranslation
-                  ? 'bg-purple-600 text-white hover:bg-purple-500'
-                  : 'text-gray-400 hover:text-white hover:bg-white/10',
+              {/* Batch translation - only for translators */}
+              {isTranslator && (
+                <button
+                  onClick={() => {
+                    setShowBatchTranslation(!showBatchTranslation);
+                    setToolsMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Wand2 className="h-4 w-4" />
+                  Batch Translate
+                </button>
               )}
-            >
-              <Wand2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Batch</span>
-            </button>
+
+              {/* History toggle */}
+              <button
+                onClick={() => {
+                  setHistoryOpen(!historyOpen);
+                  setToolsMenuOpen(false);
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <History className="h-4 w-4" />
+                Translation History
+              </button>
+
+              {/* Reading mode toggle */}
+              <button
+                onClick={() => {
+                  toggleReadingMode();
+                  setToolsMenuOpen(false);
+                }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                {readingMode === 'scroll' ? (
+                  <>
+                    <Square className="h-4 w-4" />
+                    Page Mode
+                  </>
+                ) : (
+                  <>
+                    <List className="h-4 w-4" />
+                    Scroll Mode
+                  </>
+                )}
+              </button>
+
+              {/* Chapter navigation */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                {prevChapter && (
+                  <Link
+                    to={`/read/${prevChapter.id}`}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous Chapter
+                  </Link>
+                )}
+                {nextChapter && (
+                  <Link
+                    to={`/read/${nextChapter.id}`}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Next Chapter
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                )}
+              </div>
+            </div>
           )}
-
-          {/* History toggle */}
-          <button
-            onClick={() => setHistoryOpen((v) => !v)}
-            title="Translation history"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <History className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">History</span>
-          </button>
-
-          {/* Reading mode toggle */}
-          <button
-            onClick={toggleReadingMode}
-            title={readingMode === 'scroll' ? 'Switch to page mode' : 'Switch to scroll mode'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            {readingMode === 'scroll'
-              ? <Square className="h-3.5 w-3.5" />
-              : <List className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">
-              {readingMode === 'scroll' ? 'Page' : 'Scroll'}
-            </span>
-          </button>
         </div>
+      </div>
       </header>
 
-      {/* ── Reading area ─────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col items-center">
+      {/* Close dropdown when clicking outside */}
+      {toolsMenuOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setToolsMenuOpen(false)}
+        />
+      )}
+
+      <main className="flex-1">
         {selectionMode && (
           <div className="w-full max-w-3xl mx-auto px-4 pt-3">
             <div className="glass rounded-xl border border-indigo-500/30 px-4 py-2 text-xs text-indigo-300 text-center">
@@ -786,9 +827,8 @@ export default function MangaReaderPage() {
         )}
 
         {extracting && (
-          <div className="flex flex-col items-center gap-3 py-24 text-gray-400">
-            <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
-            <p className="text-sm">Loading chapter…</p>
+          <div className="flex justify-center py-24">
+            <LoadingSpinner size="lg" />
           </div>
         )}
 
