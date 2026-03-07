@@ -5,113 +5,48 @@
  *   - **manga-ocr**  — state-of-the-art Japanese manga OCR
  *   - **OPUS-MT**    — high-quality offline ja→en neural translation
  *
- * In development the server runs on localhost:5100 (`VITE_LOCAL_API_URL`).
- * In production it is hosted on Railway (`VITE_OCR_API_URL`).
+ * URL selection is based on the current hostname at runtime:
+ *   - localhost / 127.0.0.1  → VITE_LOCAL_API_URL (default: http://localhost:5100)
+ *   - any other hostname     → VITE_OCR_API_URL   (Railway production)
  *
- * The code probes the local server first; if unavailable it falls back
- * to the Railway production URL.  Both OCR and translation **require**
- * at least one of these servers — there are no browser-side fallbacks.
+ * This avoids probing localhost in production, which browsers block via CORS
+ * before any fallback logic can execute.
  */
 
 // ─── Configuration ────────────────────────────────────────────
 
-/**
- * Local dev URL of the py-mekai-api server (default: http://localhost:5100).
- * Set `VITE_LOCAL_API_URL` in `.env` / `.env.local` for local development.
- */
-const LOCAL_API_URL: string =
-  (import.meta.env.VITE_LOCAL_API_URL as string | undefined) ??
-  'http://localhost:5100';
+const _isLocal =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1');
 
 /**
- * Production Railway URL of the py-mekai-api server.
- * Set `VITE_OCR_API_URL` in `.env` or Vercel env vars for production.
+ * Resolved API base URL — localhost in dev, Railway in production.
+ * Selected synchronously at module load time based on hostname.
  */
-const RAILWAY_API_URL: string | undefined =
-  (import.meta.env.VITE_OCR_API_URL as string | undefined);
+const BASE_API_URL: string = _isLocal
+  ? ((import.meta.env.VITE_LOCAL_API_URL as string | undefined) ?? 'http://localhost:5100')
+  : ((import.meta.env.VITE_OCR_API_URL as string | undefined) ?? '');
+
+/** How long (ms) to wait for a health probe before treating it as unavailable. */
+const PROBE_TIMEOUT_MS = 3_000;
+
+// ─── Health check ─────────────────────────────────────────────
 
 /**
- * Resolved API base URL — determined at runtime by probing local first,
- * then falling back to Railway.
+ * Check whether a py-mekai-api endpoint responds within PROBE_TIMEOUT_MS.
  */
-let _resolvedUrl: string | null = null;
-
-/** How long (ms) to wait when probing whether a local service is up. */
-const PROBE_TIMEOUT_MS = 1_500;
-
-// ─── Probing ──────────────────────────────────────────────────
-
-/** Cache for service availability so we don't probe on every call. */
-const _cache: Record<string, { available: boolean; ts: number }> = {};
-/** Cache TTL — re-probe every 30 s. */
-const CACHE_TTL_MS = 30_000;
-
-/**
- * Resolve which API base URL to use.  Tries local first (fast for dev),
- * then falls back to the Railway production URL.
- */
-async function resolveApiUrl(): Promise<string> {
-  if (_resolvedUrl) return _resolvedUrl;
-
-  // Try local dev server first
-  if (await _probe(LOCAL_API_URL)) {
-    _resolvedUrl = LOCAL_API_URL;
-    return _resolvedUrl;
-  }
-
-  // Fall back to Railway production URL
-  if (RAILWAY_API_URL && (await _probe(RAILWAY_API_URL))) {
-    _resolvedUrl = RAILWAY_API_URL;
-    return _resolvedUrl;
-  }
-
-  // Default to Railway URL even if probe failed (may come up later)
-  _resolvedUrl = RAILWAY_API_URL ?? LOCAL_API_URL;
-  return _resolvedUrl;
-}
-
-/** Quick root-level probe (`GET /`) to see if a server is reachable. */
-async function _probe(baseUrl: string): Promise<boolean> {
+async function isServiceAvailable(path: string): Promise<boolean> {
+  if (!BASE_API_URL) return false;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
-    const res = await fetch(`${baseUrl}/`, { method: 'GET', signal: ctrl.signal });
+    const res = await fetch(`${BASE_API_URL}${path}`, { method: 'GET', signal: ctrl.signal });
     clearTimeout(timer);
     return res.ok;
   } catch {
     return false;
   }
-}
-
-/**
- * Check whether a py-mekai-api endpoint responds within PROBE_TIMEOUT_MS.
- * Result is cached for 30 s.
- */
-async function isServiceAvailable(path: string): Promise<boolean> {
-  const base = await resolveApiUrl();
-  const url = `${base}${path}`;
-  const now = Date.now();
-  const cached = _cache[url];
-  if (cached && now - cached.ts < CACHE_TTL_MS) return cached.available;
-
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
-    const res = await fetch(url, { method: 'GET', signal: ctrl.signal });
-    clearTimeout(timer);
-    const ok = res.ok;
-    _cache[url] = { available: ok, ts: now };
-    return ok;
-  } catch {
-    _cache[url] = { available: false, ts: now };
-    return false;
-  }
-}
-
-/** Force re-resolve on next call (e.g. if local server was started late). */
-export function resetApiUrlCache(): void {
-  _resolvedUrl = null;
-  for (const key of Object.keys(_cache)) delete _cache[key];
 }
 
 // ─── Manga-OCR ───────────────────────────────────────────────
@@ -130,8 +65,7 @@ export async function isMangaOcrAvailable(): Promise<boolean> {
  * @param imageBase64 - Base-64 encoded PNG/JPEG of the cropped region.
  */
 export async function localMangaOcr(imageBase64: string): Promise<string> {
-  const base = await resolveApiUrl();
-  const res = await fetch(`${base}/ocr`, {
+  const res = await fetch(`${BASE_API_URL}/ocr`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: imageBase64 }),
@@ -155,8 +89,7 @@ export async function isLocalTranslateAvailable(): Promise<boolean> {
  * Translate Japanese → English via the py-mekai-api server (OPUS-MT).
  */
 export async function localTranslateJaToEn(text: string): Promise<string> {
-  const base = await resolveApiUrl();
-  const res = await fetch(`${base}/translate`, {
+  const res = await fetch(`${BASE_API_URL}/translate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ q: text, source: 'ja', target: 'en' }),
