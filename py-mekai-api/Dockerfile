@@ -3,10 +3,11 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # System deps for PaddlePaddle / PaddleOCR / Pillow
+# Note: libgl1-mesa-glx was removed in Debian Trixie; libgl1 is the replacement.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libglib2.0-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
