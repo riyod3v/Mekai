@@ -188,13 +188,13 @@ export function BatchTranslationPanel({
       */}
       
       <div className="fixed inset-0 bg-black/50 flex items-end justify-end z-40">
-        <div className="bg-white h-96 w-full max-w-md shadow-xl flex flex-col">
+        <div className="bg-white dark:bg-gray-900 h-96 w-full max-w-md shadow-xl flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="font-semibold text-lg">Batch Translation</h3>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Batch Translation</h3>
           <button
             onClick={() => setIsOpen(false)}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
             ×
           </button>
@@ -204,14 +204,14 @@ export function BatchTranslationPanel({
         <div className="flex-1 overflow-y-auto p-4">
           {bubbles.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-600 mb-4">No speech bubbles detected yet</p>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">No speech bubbles detected yet</p>
               <button
                 onClick={handleDetectBubbles}
                 disabled={isDetecting}
                 className={clsx(
                   'px-4 py-2 rounded-lg font-medium transition-colors',
                   isDetecting
-                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                     : 'bg-blue-600 text-white hover:bg-blue-700'
                 )}
               >
@@ -230,11 +230,11 @@ export function BatchTranslationPanel({
               {/* Progress */}
               {isTranslating && (
                 <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-1">
+                  <div className="flex justify-between text-sm text-gray-700 dark:text-gray-300 mb-1">
                     <span>Progress</span>
                     <span>{currentProgress} / {bubbles.length}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all"
                       style={{ width: `${(currentProgress / bubbles.length) * 100}%` }}
@@ -256,26 +256,26 @@ export function BatchTranslationPanel({
                     key={bubble.id}
                     className={clsx(
                       'flex items-center gap-2 p-2 rounded-lg text-sm',
-                      bubble.status === 'pending' && 'bg-gray-50',
-                      bubble.status === 'processing' && 'bg-blue-50',
-                      bubble.status === 'completed' && 'bg-green-50',
-                      bubble.status === 'error' && 'bg-red-50'
+                      bubble.status === 'pending' && 'bg-gray-50 dark:bg-gray-800',
+                      bubble.status === 'processing' && 'bg-blue-50 dark:bg-blue-900/30',
+                      bubble.status === 'completed' && 'bg-green-50 dark:bg-green-900/30',
+                      bubble.status === 'error' && 'bg-red-50 dark:bg-red-900/30'
                     )}
                   >
-                    {bubble.status === 'pending' && <div className="w-4 h-4 border-2 border-gray-300 rounded-full" />}
-                    {bubble.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
-                    {bubble.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-600" />}
-                    {bubble.status === 'error' && <AlertCircle className="w-4 h-4 text-red-600" />}
+                    {bubble.status === 'pending' && <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-600 rounded-full" />}
+                    {bubble.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />}
+                    {bubble.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />}
+                    {bubble.status === 'error' && <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />}
 
                     <div className="flex-1">
-                      <div className="font-medium">Bubble {index + 1}</div>
+                      <div className="font-medium text-gray-900 dark:text-gray-100">Bubble {index + 1}</div>
                       {bubble.result && (
-                        <div className="text-gray-600 truncate">
+                        <div className="text-gray-600 dark:text-gray-400 truncate">
                           {bubble.result.translated}
                         </div>
                       )}
                       {bubble.error && (
-                        <div className="text-red-600 text-xs">
+                        <div className="text-red-600 dark:text-red-400 text-xs">
                           Error: {bubble.error}
                         </div>
                       )}
@@ -286,7 +286,7 @@ export function BatchTranslationPanel({
               </div>
 
               {/* Stats */}
-              <div className="pt-2 border-t text-sm text-gray-600">
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400">
                 {completedCount > 0 && <span>✓ {completedCount} completed</span>}
                 {errorCount > 0 && <span className="text-red-600 ml-3">✗ {errorCount} failed</span>}
               </div>
@@ -295,7 +295,7 @@ export function BatchTranslationPanel({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t flex gap-2">
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex gap-2">
           {bubbles.length > 0 && (
             <>
               {!isTranslating ? (
@@ -328,7 +328,7 @@ export function BatchTranslationPanel({
               <button
                 onClick={handleClear}
                 disabled={isTranslating}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Clear
               </button>

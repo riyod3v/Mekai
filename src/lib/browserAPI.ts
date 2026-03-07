@@ -40,10 +40,15 @@ export async function ocrAndTranslate(
     return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api' };
   }
 
-  // manga-ocr via local py-mekai-api server
+  // manga-ocr via py-mekai-api server (local in dev, Railway in prod)
   if (!(await isMangaOcrAvailable())) {
+    const isLocal =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     throw new Error(
-      'manga-ocr is not running. Start py-mekai-api/main.py first.',
+      isLocal
+        ? 'manga-ocr is not running. Start py-mekai-api/main.py first.'
+        : 'OCR service is unreachable. Check that VITE_OCR_API_URL is set and Railway is running.',
     );
   }
   const base64 = cropToDataUrl(imgEl, bbox);
