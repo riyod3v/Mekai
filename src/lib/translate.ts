@@ -32,7 +32,7 @@ export async function translateJapaneseToEnglishWithProvider(
 
   if (!(await isLocalTranslateAvailable())) {
     throw new Error(
-      'Local translate service is not running. Start py-mekai-api/server.py first.',
+      'Local translate service is not running. Start py-mekai-api/main.py first.',
     );
   }
 

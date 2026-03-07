@@ -4,14 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
-  Scan, History, X, List, Square, Wand2, Menu, Moon, Sun,
+  Scan, History, X, List, Square, Wand2, Menu,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { useNotification } from '@/context/NotificationContext';
 import clsx from 'clsx';
 
 import { fetchChapterById, fetchChaptersByManga } from '@/services/chapters';
-import { fetchChapterTranslations, upsertChapterTranslation } from '@/services/chapterTranslations';
+import { fetchChapterTranslations, upsertChapterTranslation, deleteChapterTranslation } from '@/services/chapterTranslations';
 import { addToWordVault } from '@/services/wordVault';
 import { fetchReadingProgress, upsertReadingProgress } from '@/services/readingProgress';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
@@ -255,21 +255,12 @@ export default function MangaReaderPage() {
   const [autoDetectedBubbles, setAutoDetectedBubbles] = useState<Array<{ pageIndex: number; region: RegionBox }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: historyRows } = useTranslationHistory(chapterId ?? '');
   const addHistory = useAddTranslationHistory();
   const deleteHistory = useDeleteTranslationHistory(chapterId ?? '');
   const notify = useNotification();
-
-  // ── Theme toggle ─────────────────────────────────────────────
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-  }, [isDark]);
-
-  const toggleTheme = () => setIsDark(!isDark);
 
   // ── Sync user overlays from persisted history ─────────────
   useEffect(() => {
@@ -567,14 +558,34 @@ export default function MangaReaderPage() {
   // ── Dismiss overlay + delete from DB ──────────────────────
   const handleDismissOverlay = useCallback(
     async (id: string) => {
-      setUserOverlays((prev) => prev.filter((o) => o.id !== id));
-      try {
-        await deleteHistory.mutateAsync(id);
-      } catch {
-        notify.error('Failed to delete from history');
+      // Find the overlay to determine its source
+      const overlay = mergedOverlays.find((o) => o.id === id);
+      if (!overlay) return;
+
+      if (overlay.source === 'published') {
+        // Delete published translation from chapter_translations table
+        setPublishedOverlays((prev) => prev.filter((o) => o.id !== id));
+        try {
+          await deleteChapterTranslation(id);
+          await queryClient.invalidateQueries({
+            queryKey: ['chapter_translations', chapterId],
+          });
+          notify.success('Published translation deleted');
+        } catch {
+          notify.error('Failed to delete published translation');
+        }
+      } else {
+        // Delete from user's private translation_history
+        setUserOverlays((prev) => prev.filter((o) => o.id !== id));
+        try {
+          await deleteHistory.mutateAsync(id);
+          notify.success('Translation deleted');
+        } catch {
+          notify.error('Failed to delete from history');
+        }
       }
     },
-    [deleteHistory],
+    [mergedOverlays, deleteHistory, chapterId, queryClient, notify],
   );
 
   // ── Save overlay to word vault ─────────────────────────────
@@ -699,17 +710,8 @@ export default function MangaReaderPage() {
         </p>
       </div>
 
-      {/* Right: Theme toggle and Hamburger menu */}
+      {/* Right: Hamburger menu */}
       <div className="flex items-center gap-2">
-        {/* Theme toggle */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          title="Toggle theme"
-        >
-          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
-
         {/* Hamburger menu */}
         <div className="relative">
           <button
@@ -977,6 +979,18 @@ export default function MangaReaderPage() {
               setHistoryOpen(false);
               handleHighlight(entry);
             }}
+            onSaveToVault={bookmarkHandler ? (entry) => {
+              addToWordVault({
+                chapter_id: chapterId,
+                page_index: entry.page_index,
+                region: entry.region,
+                region_hash: entry.region_hash,
+                original: entry.ocr_text,
+                translated: entry.translated,
+                romaji: entry.romaji,
+              }).then(() => notify.success('Saved to Word Vault'))
+                .catch(() => notify.error('Failed to save to Word Vault'));
+            } : undefined}
           />
         )}
       </Drawer>

@@ -60,4 +60,19 @@
   .mekai-primary-bg   { background-color: #40467c; }
   .mekai-primary-text { color: #40467c; }
   .mekai-primary-border { border-color: rgba(64, 70, 124, 0.45); }
+
+  .animate-slide-up {
+    animation: slide-up 0.25s ease-out;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }

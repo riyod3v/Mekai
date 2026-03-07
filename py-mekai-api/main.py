@@ -205,6 +205,9 @@ else:
         "https://mekaiscans.vercel.app",
     ]
 
+# Also allow any localhost/127.0.0.1 origin dynamically for dev
+_ALLOW_ALL_LOCAL = os.environ.get("MEKAI_ALLOW_ALL_LOCAL", "1") == "1"
+
 # ─── FastAPI app ──────────────────────────────────────────────
 
 
@@ -234,13 +237,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
+if _ALLOW_ALL_LOCAL:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
 
 
 # ─── Helper: image decoding ──────────────────────────────────

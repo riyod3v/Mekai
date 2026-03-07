@@ -43,7 +43,7 @@ export async function ocrAndTranslate(
   // manga-ocr via local py-mekai-api server
   if (!(await isMangaOcrAvailable())) {
     throw new Error(
-      'manga-ocr is not running. Start py-mekai-api/server.py first.',
+      'manga-ocr is not running. Start py-mekai-api/main.py first.',
     );
   }
   const base64 = cropToDataUrl(imgEl, bbox);
