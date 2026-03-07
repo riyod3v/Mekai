@@ -35,7 +35,6 @@ function AppRoutes() {
   const location = useLocation();
   const hideNavbar =
     location.pathname === '/' ||
-    location.pathname.startsWith('/read/') ||
     location.pathname === '/auth';
 
   if (authLoading || (user && roleLoading)) return <FullPageLoader />;

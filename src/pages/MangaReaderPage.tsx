@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
-  Scan, History, X, List, Square,
+  Scan, History, X, List, Square, Wand2,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { useNotification } from '@/context/NotificationContext';
@@ -18,6 +18,8 @@ import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import { ErrorState } from '@/ui/components/ErrorState';
 import { OCRSelectionLayer, type SelectionRect } from '@/ui/components/OCRSelectionLayer';
 import { TranslationOverlay } from '@/ui/components/TranslationOverlay';
+import { EnhancedTranslationOverlay } from '@/ui/components/EnhancedTranslationOverlay';
+import { BatchTranslationPanel } from '@/ui/components/BatchTranslationPanel';
 import { HistoryPanel } from '@/ui/components/HistoryPanel';
 import { Drawer } from '@/ui/components/Drawer';
 import { ocrAndTranslate } from '@/lib/browserAPI';
@@ -113,14 +115,22 @@ interface PageItemProps {
   onDismissOverlay: (id: string) => void;
   onSaveToVault?: (id: string) => void;
   isChapterOwner: boolean;
+  onImageRef?: (pageIndex: number, ref: HTMLImageElement | null) => void;
 }
 
 function ReaderPageItem({
   src, pageIndex, loading, selectionActive,
   onSelect, ocrState, onDismissOcr, overlays, highlightId,
-  onDismissOverlay, onSaveToVault, isChapterOwner,
+  onDismissOverlay, onSaveToVault, isChapterOwner, onImageRef,
 }: PageItemProps) {
   const imgRef = useRef<HTMLImageElement>(null);
+
+  // Update ref map when image ref changes
+  useEffect(() => {
+    if (onImageRef) {
+      onImageRef(pageIndex, imgRef.current);
+    }
+  }, [pageIndex, onImageRef]);
 
   const handleSelect = useCallback(
     (sel: SelectionRect) => {
@@ -148,7 +158,7 @@ function ReaderPageItem({
 
         {/* In-bubble translation overlays */}
         {overlays.map((ov) => (
-          <TranslationOverlay
+          <EnhancedTranslationOverlay
             key={ov.key}
             id={ov.id}
             region={ov.region}
@@ -225,6 +235,7 @@ export default function MangaReaderPage() {
   );
   const [currentPage, setCurrentPage] = useState(0);
   const initialProgressApplied = useRef(false);
+  const imageRefs = useRef<{ [key: number]: HTMLImageElement | null }>({});
 
   function toggleReadingMode() {
     setReadingMode((prev) => {
@@ -242,6 +253,8 @@ export default function MangaReaderPage() {
   const [ocr, setOcr] = useState<OcrState | null>(null);
   const [userOverlays, setUserOverlays] = useState<Overlay[]>([]);
   const [publishedOverlays, setPublishedOverlays] = useState<Overlay[]>([]);
+  const [showBatchTranslation, setShowBatchTranslation] = useState(false);
+  const [autoDetectedBubbles, setAutoDetectedBubbles] = useState<Array<{ pageIndex: number; region: RegionBox }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -503,6 +516,46 @@ export default function MangaReaderPage() {
   [chapter, addHistory, canPublishTranslations, queryClient, chapterId]
 );
 
+  // ── Batch translation handlers ───────────────────────────────
+  const handleBatchTranslationComplete = useCallback((bubble: any) => {
+    const newOverlay: Overlay = {
+      id: bubble.id,
+      key: `${currentPage}-${regionHash(bubble.region)}`,
+      pageIndex: currentPage,
+      region: bubble.region,
+      ocrText: bubble.result.ocrText,
+      translated: bubble.result.translated,
+      romaji: bubble.result.romaji,
+      source: 'history',
+      ocrSource: 'manga-ocr',
+      translationProvider: 'py-mekai-api',
+    };
+
+    setUserOverlays(prev => [newOverlay, ...prev]);
+    
+    if (bubble.result.ocrText.length > 1 && bubble.result.translated.length > 1) {
+      addToWordVault({
+        chapter_id: chapterId ?? undefined,
+        page_index: newOverlay.pageIndex,
+        region: newOverlay.region,
+        region_hash: regionHash(newOverlay.region),
+        original: newOverlay.ocrText,
+        translated: newOverlay.translated,
+        romaji: newOverlay.romaji,
+      });
+    }
+  }, [chapterId, currentPage]);
+
+  const handleAllTranslationsComplete = useCallback(() => {
+    notify.success('Batch translation completed!');
+    setShowBatchTranslation(false);
+  }, [notify]);
+
+  // ── Image ref handler ─────────────────────────────────────────
+  const handleImageRef = useCallback((pageIndex: number, ref: HTMLImageElement | null) => {
+    imageRefs.current[pageIndex] = ref;
+  }, []);
+
   // ── Dismiss overlay + delete from DB ──────────────────────
   const handleDismissOverlay = useCallback(
     async (id: string) => {
@@ -613,9 +666,9 @@ export default function MangaReaderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
       {/* ── Top bar (CSS grid: left / center / right) ────────── */}
-      <header className="sticky top-0 z-50 grid grid-cols-[auto_1fr_auto] items-center gap-2 px-4 py-3 bg-gray-950/90 backdrop-blur border-b border-white/10">
+      <header className="sticky top-0 z-40 grid grid-cols-[auto_1fr_auto] items-center gap-2 px-4 py-3 bg-white/90 dark:bg-gray-950/90 backdrop-blur border-b border-gray-200 dark:border-white/10">
         {/* Left: Back + prev/next chapter */}
         <div className="flex items-center gap-1 shrink-0">
           <button
@@ -658,7 +711,7 @@ export default function MangaReaderPage() {
 
         {/* Center: chapter title (always centered) */}
         <div className="min-w-0 text-center">
-          <p className="text-sm font-semibold text-white truncate">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
             Chapter {chapter.chapter_number}
             {chapter.title ? ` — ${chapter.title}` : ''}
           </p>
@@ -680,6 +733,23 @@ export default function MangaReaderPage() {
             <Scan className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{selectionMode ? 'OCR On' : 'OCR'}</span>
           </button>
+
+          {/* Batch translation toggle - only for translators */}
+          {isTranslator && (
+            <button
+              onClick={() => setShowBatchTranslation(!showBatchTranslation)}
+              title={showBatchTranslation ? 'Close batch translation' : 'Auto-translate all speech bubbles'}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                showBatchTranslation
+                  ? 'bg-purple-600 text-white hover:bg-purple-500'
+                  : 'text-gray-400 hover:text-white hover:bg-white/10',
+              )}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Batch</span>
+            </button>
+          )}
 
           {/* History toggle */}
           <button
@@ -749,6 +819,7 @@ export default function MangaReaderPage() {
                   onDismissOverlay={handleDismissOverlay}
                   onSaveToVault={bookmarkHandler}
                   isChapterOwner={isChapterOwner}
+                  onImageRef={handleImageRef}
                 />
               ))}
 
@@ -795,6 +866,7 @@ export default function MangaReaderPage() {
                 onDismissOverlay={handleDismissOverlay}
                 onSaveToVault={bookmarkHandler}
                 isChapterOwner={isChapterOwner}
+                onImageRef={handleImageRef}
               />
 
               {/* Page navigation bar */}
@@ -870,6 +942,16 @@ export default function MangaReaderPage() {
           />
         )}
       </Drawer>
+
+      {/* Batch Translation Panel */}
+      {showBatchTranslation && (
+        <BatchTranslationPanel
+          imageRef={{ current: imageRefs.current[currentPage] }}
+          pageIndex={currentPage}
+          onTranslationComplete={handleBatchTranslationComplete}
+          onAllComplete={handleAllTranslationsComplete}
+        />
+      )}
     </div>
   );
 }

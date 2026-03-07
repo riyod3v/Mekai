@@ -1,0 +1,28 @@
+[phases.setup]
+nixPkgs = ["python311", "libgomp", "libglib", "libgl1"]
+
+[phases.install]
+cmds = [
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate",
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt"
+]
+
+[phases.build]
+cmds = [
+  ". /opt/venv/bin/activate",
+  "python main.py --install-ocr || echo 'OCR model download failed'",
+  "python main.py --install-translate || echo 'Translation model download failed'"
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info"
+
+[variables]
+PYTHONPATH = "/app"
+TRANSFORMERS_CACHE = "/app/models"
+HF_HOME = "/app/models"
+TORCH_DISABLE_SHM = "1"
+PYTORCH_CUDA_ALLOC_CONF = "max_split_size_mb:128"
+CUDA_VISIBLE_DEVICES = "-1"

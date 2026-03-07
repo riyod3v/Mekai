@@ -79,7 +79,7 @@ export function ProfileDropdown({ onSignOut }: Props) {
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-slate-900 shadow-lg z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-slate-900 shadow-lg z-[9999] overflow-hidden">
 
           {/* Account header */}
           <div className="px-4 py-3 flex items-center gap-3 border-b border-black/5 dark:border-white/5">
