@@ -36,10 +36,26 @@ function isValidEmail(email: string) {
 // SecurityError Messages
 function friendlyAuthError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  if (msg.includes('invalid login credentials') || msg.includes('invalid credentials'))
-    return 'Incorrect email or password. Please try again.';
-  if (msg.includes('email not confirmed'))
-    return 'Please confirm your email address before signing in. Check your inbox.';
+  // Supabase AuthApiError also exposes a machine-readable `.code` field
+  // (e.g. "email_not_confirmed", "invalid_credentials") in v2.x SDK.
+  const code = (err != null && typeof err === 'object' && 'code' in err)
+    ? String((err as { code: unknown }).code).toLowerCase()
+    : '';
+
+  if (
+    code === 'email_not_confirmed' ||
+    msg.includes('email not confirmed') ||
+    msg.includes('email_not_confirmed')
+  ) return 'Please confirm your email address before signing in. Check your inbox.';
+  if (
+    code === 'invalid_credentials' ||
+    msg.includes('invalid login credentials') ||
+    msg.includes('invalid credentials')
+  ) return 'Incorrect email or password. Please try again.';
+  if (
+    code === 'user_not_found' ||
+    msg.includes('user not found')
+  ) return 'No account found with this email. Try signing up instead.';
   if (msg.includes('user already registered') || msg.includes('already been registered'))
     return 'An account with this email already exists. Try signing in instead.';
   if (msg.includes('token is expired') || msg.includes('otp expired') || msg.includes('token has expired'))
@@ -48,7 +64,7 @@ function friendlyAuthError(err: unknown): string {
     return 'Invalid code. Double-check what you entered and try again.';
   if (msg.includes('password should be at least'))
     return 'Password must be at least 6 characters (Supabase minimum).';
-  if (msg.includes('rate limit') || msg.includes('too many requests'))
+  if (code === 'over_request_rate_limit' || msg.includes('rate limit') || msg.includes('too many requests'))
     return 'Too many attempts. Please wait a moment before trying again.';
   if (msg.includes('network') || msg.includes('fetch'))
     return 'Network error. Check your connection and try again.';
