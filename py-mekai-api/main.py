@@ -159,7 +159,12 @@ def _translate_opus(text: str) -> str:
     with torch.no_grad():
         output = model.generate(**inputs)
     return tokenizer.decode(output[0], skip_special_tokens=True)
+    
+    del inputs
+    del output
+    gc.collect()
 
+    return result
 
 # ─── One-time model installers (CLI) ─────────────────────────
 
@@ -214,7 +219,14 @@ _ALLOW_ALL_LOCAL = os.environ.get("MEKAI_ALLOW_ALL_LOCAL", "1") == "1"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Mekai API starting \u2014 models will load lazily on first request.")
+    log.info("Mekai API starting \u2014 models will load lazily.")
+
+    try:
+        log.info("Preloading translation model...")
+        get_opus_translator()
+    except Exception as exc:
+        log.warning("Translation preload failed: %s", exc)
+
     yield
 
 
@@ -414,7 +426,73 @@ async def ocr(
     finally:
         gc.collect()
 
+@app.post("/ocr/debug")
+async def ocr_debug(file: UploadFile = File(...)):
+    """
+    Debug OCR endpoint for testing image uploads directly.
+    """
 
+    try:
+        raw = await file.read()
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+
+        log.info("OCR debug request received")
+
+        text = _run_paddle_ocr(img)
+
+        return {
+            "success": True,
+            "text": text
+        }
+
+    except Exception as exc:
+        log.error("OCR debug failed: %s", exc)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(exc)
+            }
+        )
+
+    finally:
+        gc.collect()
+
+@app.post("/translate/debug")
+async def translate_debug(request: Request):
+    """
+    Debug translation endpoint.
+    """
+
+    try:
+        body = await request.json()
+        text = body.get("text", "")
+
+        if not text:
+            return {"translatedText": ""}
+
+        log.info("Translation debug request received")
+
+        result = _translate_opus(text)
+
+        return {
+            "input": text,
+            "translatedText": result
+        }
+
+    except Exception as exc:
+        log.error("Translation debug failed: %s", exc)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(exc)
+            }
+        )
+
+    finally:
+        gc.collect()
 # ─── Translation endpoint ────────────────────────────────────
 
 
