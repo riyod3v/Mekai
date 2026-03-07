@@ -194,25 +194,29 @@ def predownload_paddle_models() -> None:
 
 # ─── CORS configuration ──────────────────────────────────────
 
+# Origins that are always allowed regardless of env vars
+_REQUIRED_ORIGINS = [
+    "https://mekaiscans.vercel.app",
+]
+
 _env_origins = os.environ.get("MEKAI_ALLOWED_ORIGINS", "")
 if _env_origins:
-    ALLOWED_ORIGINS = [
+    _extra = [
         o.strip()
         for o in _env_origins.replace("\r", "").replace("\n", ",").split(",")
         if o.strip()
     ]
 else:
-    ALLOWED_ORIGINS = [
+    _extra = [
         "http://localhost:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:60915",
-        "https://mekaiscans.vercel.app",
     ]
 
-# Also allow any localhost/127.0.0.1 origin dynamically for dev
-_ALLOW_ALL_LOCAL = os.environ.get("MEKAI_ALLOW_ALL_LOCAL", "1") == "1"
+# Merge: required origins always present, then env/default extras (deduped)
+ALLOWED_ORIGINS = list(dict.fromkeys(_REQUIRED_ORIGINS + _extra))
 
 # ─── FastAPI app ──────────────────────────────────────────────
 
@@ -220,6 +224,7 @@ _ALLOW_ALL_LOCAL = os.environ.get("MEKAI_ALLOW_ALL_LOCAL", "1") == "1"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Mekai API starting \u2014 models will load lazily.")
+    log.info("Allowed CORS origins: %s", ALLOWED_ORIGINS)
 
     try:
         log.info("Preloading translation model...")
@@ -236,23 +241,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-if _ALLOW_ALL_LOCAL:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
-        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-    )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 
 # ─── Helper: image decoding ──────────────────────────────────

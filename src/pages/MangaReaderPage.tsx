@@ -11,6 +11,7 @@ import { useNotification } from '@/context/NotificationContext';
 import clsx from 'clsx';
 
 import { fetchChapterById, fetchChaptersByManga } from '@/services/chapters';
+import { fetchMangaById } from '@/services/manga';
 import { fetchChapterTranslations, upsertChapterTranslation, deleteChapterTranslation } from '@/services/chapterTranslations';
 import { addToWordVault } from '@/services/wordVault';
 import { fetchReadingProgress, upsertReadingProgress } from '@/services/readingProgress';
@@ -114,13 +115,14 @@ interface PageItemProps {
   onDismissOverlay: (id: string) => void;
   onSaveToVault?: (id: string) => void;
   isChapterOwner: boolean;
+  readOnly?: boolean;
   onImageRef?: (pageIndex: number, ref: HTMLImageElement | null) => void;
 }
 
 function ReaderPageItem({
   src, pageIndex, loading, selectionActive,
   onSelect, ocrState, onDismissOcr, overlays, highlightId,
-  onDismissOverlay, onSaveToVault, isChapterOwner, onImageRef,
+  onDismissOverlay, onSaveToVault, isChapterOwner, readOnly, onImageRef,
 }: PageItemProps) {
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -167,6 +169,7 @@ function ReaderPageItem({
             ocrSource={ov.ocrSource}
             translationProvider={ov.translationProvider}
             highlighted={highlightId === ov.id}
+            readOnly={readOnly}
             onDismiss={onDismissOverlay}
             onSaveToVault={onSaveToVault}
           />
@@ -219,7 +222,7 @@ export default function MangaReaderPage() {
   const { chapterId } = useParams<{ chapterId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { isTranslator } = useRole();
+  const { isTranslator, isReader } = useRole();
 
   // ── CBZ state ──────────────────────────────────────────────
   const [images, setImages] = useState<string[]>([]);
@@ -250,7 +253,6 @@ export default function MangaReaderPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [ocr, setOcr] = useState<OcrState | null>(null);
   const [userOverlays, setUserOverlays] = useState<Overlay[]>([]);
-  const [publishedOverlays, setPublishedOverlays] = useState<Overlay[]>([]);
   const [showBatchTranslation, setShowBatchTranslation] = useState(false);
   const [autoDetectedBubbles, setAutoDetectedBubbles] = useState<Array<{ pageIndex: number; region: RegionBox }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -289,6 +291,17 @@ export default function MangaReaderPage() {
   const nextChapter =
     currentIdx >= 0 && currentIdx < siblings.length - 1 ? siblings[currentIdx + 1] : null;
 
+  // ── Fetch manga to determine visibility ──────────────────
+  const { data: manga } = useQuery({
+    queryKey: ['manga', chapter?.manga_id],
+    enabled: !!chapter?.manga_id,
+    queryFn: () => fetchMangaById(chapter!.manga_id),
+  });
+
+  // Readers viewing shared (published) manga → read-only, no OCR tools
+  const isSharedManga = manga?.visibility === 'shared';
+  const isReadOnlyViewer = !!(isReader && isSharedManga);
+
   // Any translator can publish translations for readers to see
   const canPublishTranslations = !!(isTranslator && chapter && user);
   
@@ -302,9 +315,11 @@ export default function MangaReaderPage() {
     queryFn: () => fetchChapterTranslations(chapterId!),
   });
 
-  useEffect(() => {
-    if (publishedRows) setPublishedOverlays(publishedRows.map(publishedRowToOverlay));
-  }, [publishedRows]);
+  // Derive published overlays directly from query data (no intermediate state)
+  const publishedOverlays = useMemo(
+    () => (publishedRows ?? []).map(publishedRowToOverlay),
+    [publishedRows],
+  );
 
   // ── Merge overlays: published + user (dedup by key) ───────
   const mergedOverlays = useMemo(() => {
@@ -327,7 +342,6 @@ export default function MangaReaderPage() {
     setExtracting(true);
     setOcr(null);
     setUserOverlays([]);
-    setPublishedOverlays([]);
     setCurrentPage(0);
     initialProgressApplied.current = false;
 
@@ -564,7 +578,6 @@ export default function MangaReaderPage() {
 
       if (overlay.source === 'published') {
         // Delete published translation from chapter_translations table
-        setPublishedOverlays((prev) => prev.filter((o) => o.id !== id));
         try {
           await deleteChapterTranslation(id);
           await queryClient.invalidateQueries({
@@ -655,8 +668,9 @@ export default function MangaReaderPage() {
     }
   }, [readingMode]);
 
-  // ── Toggle selection mode ──────────────────────────────────
+  // ── Toggle selection mode (disabled for read-only viewers) ─
   function toggleSelectionMode() {
+    if (isReadOnlyViewer) return;
     setSelectionMode((v) => {
       if (v) setOcr(null);
       return !v;
@@ -725,7 +739,8 @@ export default function MangaReaderPage() {
           {/* Dropdown menu */}
           {toolsMenuOpen && (
             <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
-              {/* OCR mode toggle */}
+              {/* OCR mode toggle — hidden for readers on shared manga */}
+              {!isReadOnlyViewer && (
               <button
                 onClick={() => {
                   toggleSelectionMode();
@@ -736,6 +751,7 @@ export default function MangaReaderPage() {
                 <Scan className="h-4 w-4" />
                 {selectionMode ? 'Exit OCR' : 'Enable OCR'}
               </button>
+              )}
 
               {/* Batch translation - only for translators */}
               {isTranslator && (
@@ -859,6 +875,7 @@ export default function MangaReaderPage() {
                   onDismissOverlay={handleDismissOverlay}
                   onSaveToVault={bookmarkHandler}
                   isChapterOwner={isChapterOwner}
+                  readOnly={isReadOnlyViewer}
                   onImageRef={handleImageRef}
                 />
               ))}
@@ -906,6 +923,7 @@ export default function MangaReaderPage() {
                 onDismissOverlay={handleDismissOverlay}
                 onSaveToVault={bookmarkHandler}
                 isChapterOwner={isChapterOwner}
+                readOnly={isReadOnlyViewer}
                 onImageRef={handleImageRef}
               />
 

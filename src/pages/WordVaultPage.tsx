@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Vault, Trash2, Search } from 'lucide-react';
+import { Vault, Trash2, Search, Volume2 } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWordVault, deleteFromWordVault } from '@/services/wordVault';
@@ -13,6 +13,20 @@ export default function WordVaultPage() {
   const queryClient = useQueryClient();
   const notify = useNotification();
   const [search, setSearch] = useState('');
+
+  const handleSpeak = useCallback((romaji: string) => {
+    try {
+      if ('speechSynthesis' in window && romaji) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(romaji);
+        utterance.lang = 'ja-JP';
+        utterance.rate = 0.9;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (error) {
+      console.warn('Text-to-speech not available:', error);
+    }
+  }, []);
 
   const {
     data: entries = [],
@@ -91,14 +105,25 @@ export default function WordVaultPage() {
                     {entry.original}
                   </p>
                 </div>
-                <button
-                  onClick={() => deleteMutation.mutate(entry.id)}
-                  disabled={deleteMutation.isPending}
-                  className="shrink-0 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
-                  title="Remove from vault"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="shrink-0 flex items-center gap-1">
+                  {entry.romaji && (
+                    <button
+                      onClick={() => handleSpeak(entry.romaji!)}
+                      className="p-1.5 rounded-lg text-gray-600 hover:text-indigo-400 hover:bg-indigo-400/10 opacity-0 group-hover:opacity-100 transition-all"
+                      title="Pronounce"
+                    >
+                      <Volume2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => deleteMutation.mutate(entry.id)}
+                    disabled={deleteMutation.isPending}
+                    className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Remove from vault"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
 
               {entry.translated && (
