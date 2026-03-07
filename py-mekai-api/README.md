@@ -111,7 +111,7 @@ Point the frontend at a remote/staging Railway deployment:
 
 ```
 # .env.local
-VITE_MEKAI_API_URL=https://your-railway-deployment.up.railway.app
+VITE_OCR_API_URL=https://mekai-production.up.railway.app
 ```
 
 ---
@@ -129,7 +129,7 @@ VITE_MEKAI_API_URL=https://your-railway-deployment.up.railway.app
 - Frontend probes `/ocr/health` and `/translate/health` on startup.
 - If available → uses PaddleOCR for recognition and OPUS-MT for translation.
 - If unavailable → shows error (no browser-side fallbacks).
-- In production, set `VITE_MEKAI_API_URL` to the Railway deployment URL.
+- In production, set `VITE_OCR_API_URL` to the Railway deployment URL (already set in `.env`).
 
 ---
 
@@ -178,7 +178,7 @@ python main.py --port 5200
 Then in `.env.local`:
 
 ```
-VITE_MEKAI_API_URL=http://localhost:5200
+VITE_LOCAL_API_URL=http://localhost:5200
 ```
 
 ---

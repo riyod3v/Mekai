@@ -196,11 +196,11 @@ function DetailsSheet({
       <div className="fixed bottom-0 left-0 right-0 z-[9999] animate-slide-up">
         <div className="max-w-lg mx-auto bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl border-t border-gray-200 dark:border-gray-700 overflow-hidden">
           {/* Handle bar + close */}
-          <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 mx-auto" />
+          <div className="relative flex items-center justify-center px-4 pt-3 pb-2">
+            <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
             <button
               onClick={onClose}
-              className="absolute right-3 top-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="absolute right-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               <X className="h-4 w-4" />
             </button>

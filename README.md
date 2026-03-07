@@ -299,7 +299,8 @@ Edit `.env.local`:
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_MEKAI_API_URL=http://localhost:5100
+VITE_LOCAL_API_URL=http://localhost:5100
+VITE_OCR_API_URL=https://mekai-production.up.railway.app
 ```
 
 Find Supabase values in `Supabase Dashboard -> Project Settings -> API`.
