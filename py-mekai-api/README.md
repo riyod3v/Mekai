@@ -1,92 +1,118 @@
-# Mekai — Local Services (Presentation Mode)
+# Mekai API — Lightweight PaddleOCR Backend
 
-Optional companion server that upgrades Mekai's OCR and translation
-quality when running locally. Perfect for demos and development.
+Manga OCR + translation microservice for the Mekai platform.
+Designed to run within **Railway's 500 MB RAM limit** using CPU-only
+PaddlePaddle + PaddleOCR instead of the heavier PyTorch/manga-ocr stack.
 
-> **Python 3.11 or 3.12 required.** Python 3.13+ breaks several NLP
-> dependencies (manga-ocr, argostranslate). Use `uv` to pin the version.
+> **Python 3.10 – 3.12 required.** Python 3.13+ may break some dependencies.
 
 ## What it provides
 
-| Service | Technology | Improvement over default |
-|---------|-----------|------------------------|
-| **OCR** | [manga-ocr](https://github.com/kha-white/manga-ocr) | Purpose-built for Japanese manga — far more accurate than browser Tesseract.js |
-| **Translation** | [OPUS-MT ja→en](https://huggingface.co/Helsinki-NLP/opus-mt-ja-en) (preferred) or [Argos Translate](https://github.com/argosopentech/argos-translate) | Offline neural MT — higher quality than MyMemory for manga phrases |
+| Service | Technology | Notes |
+|---------|-----------|-------|
+| **OCR** | [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (lang=japan) | CPU-only, ~90 MB wheel + ~80 MB models |
+| **Translation** | [Argos Translate](https://github.com/argosopentech/argos-translate) ja→en | ~100 MB model, runs offline |
 
 ---
 
-## Quick start (Windows, VS Code)
+## Quick start (x86_64 — Windows / Linux / macOS Intel)
 
-### 1 — Install uv (once per machine)
+### 1 — Create a virtualenv
 
-Open a PowerShell terminal:
-
-```powershell
-winget install --id=astral-sh.uv -e
-# restart the terminal so uv is on PATH
-```
-
-Or if you already have Python:
-
-```powershell
-pip install uv
-```
-
-### 2 — Create a virtualenv pinned to Python 3.11
-
-```powershell
+```bash
 cd py-mekai-api
 
-# Download Python 3.11 (skipped if already present):
+# Using uv (recommended):
 uv python install 3.11
-
-# Create .venv using Python 3.11:
 uv venv --python 3.11 .venv
 
-# Activate (PowerShell):
+# Activate:
+# Linux/macOS:
+source .venv/bin/activate
+# Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
-> If PowerShell blocks scripts, run once:
-> `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
+### 2 — Install dependencies
 
-### 3 — Install torch (CPU-only, much smaller than CUDA build)
-
-```powershell
-uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+```bash
+pip install -r requirements.txt
 ```
 
-### 4 — Install all other dependencies
+### 3 — Download the Argos Translate ja→en model (one-time, ~100 MB)
 
-```powershell
-uv pip install -r requirements.txt
+```bash
+python main.py --install-translate
 ```
 
-### 5 — Download the translation model (one-time, ~300 MB)
+### 4 — (Optional) Pre-download PaddleOCR models
 
-OPUS-MT (recommended — higher quality):
-
-```powershell
-python server.py --install-translate
+```bash
+python main.py --install-ocr
 ```
 
-This caches `Helsinki-NLP/opus-mt-ja-en` in `~/.cache/huggingface/`.
-Run only once; subsequent server starts use the cache instantly.
+Models auto-download on first OCR request if you skip this step.
 
-Or for the lightweight Argos Translate ja→en model (~100 MB):
+### 5 — Start the server
 
-```powershell
-python server.py --install-argos
+```bash
+python main.py
 ```
 
-### 6 — Start the server
+Server starts on **http://localhost:5100**. The Mekai frontend detects it
+automatically — no `.env` changes needed for local dev.
 
-```powershell
-python server.py
+---
+
+## ARM64 / Apple Silicon / aarch64 workarounds
+
+PaddlePaddle does **not** publish official `aarch64` wheels on PyPI.
+Here are your options for local development on ARM64:
+
+### Option A — Build from source (most reliable)
+
+```bash
+# Install build deps
+pip install numpy protobuf
+
+# Clone and build PaddlePaddle from source
+git clone https://github.com/PaddlePaddle/Paddle.git
+cd Paddle
+mkdir build && cd build
+cmake .. -DWITH_GPU=OFF -DWITH_TESTING=OFF -DPY_VERSION=3.11
+make -j$(nproc)
+pip install python/dist/paddlepaddle-*.whl
 ```
 
-The server starts on **http://localhost:5100**. The Mekai React
-frontend detects it automatically — no `.env` changes needed.
+### Option B — Use Docker (easiest)
+
+Run the x86 image under Docker with emulation:
+
+```bash
+docker build -t mekai-api .
+docker run -p 5100:5100 mekai-api
+```
+
+On Apple Silicon, Docker Desktop automatically uses Rosetta/qemu for
+x86 images. Performance will be slower but functional for dev.
+
+### Option C — Use a pre-built community wheel
+
+Check https://www.paddlepaddle.org.cn/install/quick for any ARM64
+nightly builds, or search for community-maintained aarch64 wheels:
+
+```bash
+pip install paddlepaddle -f https://www.paddlepaddle.org.cn/whl/linux/cpu-mkl/avx/stable.html
+```
+
+### Option D — Skip local OCR, develop frontend-only
+
+Point the frontend at a remote/staging Railway deployment:
+
+```
+# .env.local
+VITE_MEKAI_API_URL=https://your-railway-deployment.up.railway.app
+```
 
 ---
 
@@ -94,27 +120,16 @@ frontend detects it automatically — no `.env` changes needed.
 
 ```
 ┌─────────────────────────┐         ┌──────────────────────────┐
-│  React app (Vite)       │──POST──▶│  server.py :5100         │
-│  localhost:5173          │         │    /ocr          manga-ocr│
-│                          │◀─JSON──│    /translate    OPUS-MT  │
+│  React app (Vite)       │──POST──▶│  main.py :5100           │
+│  localhost:5173          │         │    /ocr       PaddleOCR  │
+│                          │◀─JSON──│    /translate  Argos MT   │
 └─────────────────────────┘         └──────────────────────────┘
 ```
 
-- On startup the frontend probes `/ocr/health` and `/translate/health`.
-- If available → uses manga-ocr for OCR and OPUS-MT for translation.
-- If unavailable or 503 → OCR and translation are not available (no browser fallbacks).
-- On Vercel production, set `VITE_MEKAI_API_URL` to the hosted server URL
-  (e.g. Railway) so the deployed app can reach the API.
-
----
-
-## Translation provider priority
-
-The server tries providers in this order:
-
-1. **Argos Translate** — if the ja→en package is installed
-2. **OPUS-MT (MarianMT)** — if `Helsinki-NLP/opus-mt-ja-en` is in the HuggingFace cache
-3. → **503** — frontend shows an error (no browser fallbacks)
+- Frontend probes `/ocr/health` and `/translate/health` on startup.
+- If available → uses PaddleOCR for recognition and Argos for translation.
+- If unavailable → shows error (no browser-side fallbacks).
+- In production, set `VITE_MEKAI_API_URL` to the Railway deployment URL.
 
 ---
 
@@ -122,20 +137,41 @@ The server tries providers in this order:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/ocr/health` | 200 when manga-ocr model is loaded |
-| POST | `/ocr` | JSON `{ "image": "<base64>" }` or multipart `file` field |
-| GET | `/translate/health` | 200 when a translator is ready, 503 with instructions otherwise |
-| POST | `/translate` | JSON `{ "q": "...", "source": "ja", "target": "en" }` → `{ "translatedText": "..." }` |
+| GET | `/` | Root health check |
+| GET | `/ocr/health` | 200 when PaddleOCR is loaded |
+| POST | `/ocr` | JSON `{ "image": "<base64>" }` or multipart `file` → `{ "text": "..." }` |
+| GET | `/translate/health` | 200 when Argos ja→en is ready |
+| POST | `/translate` | `{ "q": "...", "source": "ja", "target": "en" }` → `{ "translatedText": "..." }` |
+
+---
+
+## Railway deployment
+
+Railway auto-detects the `Dockerfile`. The image:
+
+1. Installs CPU-only PaddlePaddle + PaddleOCR (~170 MB)
+2. Pre-downloads OCR models (~80 MB)
+3. Pre-downloads Argos ja→en model (~100 MB)
+4. Runs Uvicorn with 1 worker — total RSS stays under ~400 MB
+
+Railway also reads `railway.json` for deploy config. The `PORT` env
+var is injected automatically.
+
+Alternatively, if not using Docker, Railway can use the `Procfile`:
+
+```
+web: uvicorn main:app --host 0.0.0.0 --port ${PORT:-5100} --workers 1 --log-level info
+```
 
 ---
 
 ## Custom port
 
-```powershell
-python server.py --port 5200
+```bash
+python main.py --port 5200
 ```
 
-Then add to your `.env.local`:
+Then in `.env.local`:
 
 ```
 VITE_MEKAI_API_URL=http://localhost:5200
@@ -145,32 +181,22 @@ VITE_MEKAI_API_URL=http://localhost:5200
 
 ## CORS
 
-By default the server allows only `localhost:5173` and `localhost:5174`.
-Override with an environment variable:
+Default allowed origins: `localhost:5173`, `localhost:5174`, `mekaiscans.vercel.app`.
 
-```powershell
-$env:MEKAI_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000"
-python server.py
+Override via environment variable:
+
+```bash
+export MEKAI_ALLOWED_ORIGINS="http://localhost:5173,https://your-app.vercel.app"
+python main.py
 ```
 
 ---
 
-## Running only OCR (skip translation)
+## Memory footprint comparison
 
-Comment out the translation sections in `requirements.txt`, then:
-
-```powershell
-uv pip install -r requirements.txt
-python server.py   # /translate/health returns 503, frontend shows translation unavailable
-```
-
----
-
-## Disk space summary
-
-| Component | Approx size |
-|-----------|-------------|
-| manga-ocr model | ~400 MB (HuggingFace cache) |
-| OPUS-MT ja→en | ~300 MB (HuggingFace cache) |
-| Argos Translate ja→en | ~100 MB |
-| torch CPU wheel | ~200 MB |
+| Component | Old (manga-ocr) | New (PaddleOCR) |
+|-----------|-----------------|-----------------|
+| ML framework | PyTorch (~200 MB RSS) | PaddlePaddle (~90 MB RSS) |
+| OCR model | manga-ocr (~400 MB disk) | PaddleOCR japan (~80 MB disk) |
+| Translation | OPUS-MT (~300 MB disk) | Argos Translate (~100 MB disk) |
+| **Total RSS** | **~600–800 MB** (OOM on Railway) | **~300–400 MB** (within 500 MB) |

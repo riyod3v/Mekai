@@ -1,0 +1,433 @@
+# Mekai API — PaddleOCR + OPUS-MT backend
+#
+# Replaces the heavyweight manga-ocr server with CPU-only PaddlePaddle OCR
+# and OPUS-MT (Helsinki-NLP/opus-mt-ja-en) for high-quality ja→en translation.
+# Designed to run within Railway's 500 MB RAM limit.
+#
+# Endpoints (match the existing frontend contract):
+#   GET  /               — root health check
+#   GET  /ocr/health     — OCR readiness probe
+#   POST /ocr            — Japanese OCR (base64 JSON or multipart file)
+#   GET  /translate/health — translation readiness probe
+#   POST /translate       — ja→en translation (OPUS-MT)
+#
+# Quick start:
+#   pip install -r requirements.txt
+#   python main.py --install-translate   # one-time OPUS-MT model download (~300 MB)
+#   python main.py                       # start on :5100
+
+import argparse
+import base64
+import gc
+import io
+import logging
+import os
+import sys
+from contextlib import asynccontextmanager
+from typing import Optional
+
+from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from PIL import Image
+
+# ─── Logging ───────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[mekai] %(levelname)s  %(message)s",
+)
+log = logging.getLogger("mekai")
+
+# Suppress noisy PaddleOCR / PaddlePaddle debug output
+logging.getLogger("ppocr").setLevel(logging.WARNING)
+
+# ─── Lazy-loaded singletons ───────────────────────────────────
+
+_paddle_ocr: Optional[object] = None
+_opus_tokenizer: Optional[object] = None
+_opus_model: Optional[object] = None
+
+_OPUS_MODEL_NAME = "Helsinki-NLP/opus-mt-ja-en"
+
+
+def get_paddle_ocr():
+    """
+    Return the cached PaddleOCR instance, creating it on first call.
+
+    Configuration tuned for manga:
+      - lang="japan"  → Japanese recognition model
+      - use_angle_cls=True  → handles rotated / vertical text
+      - use_gpu=False → CPU-only (Railway has no GPU)
+      - det_db_score_mode="slow" → better text detection accuracy
+      - show_log=False → reduce noise
+    """
+    global _paddle_ocr
+    if _paddle_ocr is None:
+        from paddleocr import PaddleOCR
+
+        log.info("Loading PaddleOCR (japan, CPU-only)…")
+        _paddle_ocr = PaddleOCR(
+            lang="japan",
+            use_angle_cls=True,
+            use_gpu=False,
+            show_log=False,
+            # Use the "server" det model for better accuracy on speech bubbles
+            det_model_dir=None,   # auto-download default det model
+            rec_model_dir=None,   # auto-download default japan rec model
+            cls_model_dir=None,   # auto-download default cls model
+            det_db_score_mode="slow",
+        )
+        log.info("PaddleOCR ready.")
+        gc.collect()
+    return _paddle_ocr
+
+
+def get_opus_translator():
+    """
+    Return the cached OPUS-MT (MarianMT) tokenizer and model as a tuple.
+
+    Loads from the local HuggingFace cache.  Run
+    `python main.py --install-translate` once to download the model.
+    Raises RuntimeError if the model is not cached.
+    """
+    global _opus_tokenizer, _opus_model
+    if _opus_tokenizer is None or _opus_model is None:
+        try:
+            from transformers import MarianMTModel, MarianTokenizer
+        except ImportError:
+            raise RuntimeError(
+                "transformers is not installed. Run: pip install transformers sentencepiece"
+            )
+        try:
+            log.info("Loading OPUS-MT model '%s'…", _OPUS_MODEL_NAME)
+            _opus_tokenizer = MarianTokenizer.from_pretrained(
+                _OPUS_MODEL_NAME, local_files_only=True
+            )
+            _opus_model = MarianMTModel.from_pretrained(
+                _OPUS_MODEL_NAME, local_files_only=True
+            )
+            log.info("OPUS-MT ja→en ready.")
+        except Exception:
+            raise RuntimeError(
+                f"OPUS-MT model '{_OPUS_MODEL_NAME}' is not cached locally. "
+                "Run once: python main.py --install-translate"
+            )
+    return _opus_tokenizer, _opus_model
+
+
+def _translate_opus(text: str) -> str:
+    """Translate *text* from Japanese to English using the cached OPUS-MT model."""
+    import torch
+
+    tokenizer, model = get_opus_translator()
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=512,
+    )
+    with torch.no_grad():
+        output = model.generate(**inputs)
+    return tokenizer.decode(output[0], skip_special_tokens=True)
+
+
+# ─── One-time model installers (CLI) ─────────────────────────
+
+def install_opus_ja_en() -> None:
+    """Download and cache the OPUS-MT Helsinki-NLP/opus-mt-ja-en model (~300 MB)."""
+    try:
+        from transformers import MarianMTModel, MarianTokenizer
+    except ImportError:
+        print("ERROR: transformers not installed. Run: pip install transformers sentencepiece")
+        sys.exit(1)
+
+    print(f"[mekai] Downloading OPUS-MT model '{_OPUS_MODEL_NAME}' (~300 MB). Please wait…")
+    MarianTokenizer.from_pretrained(_OPUS_MODEL_NAME)
+    MarianMTModel.from_pretrained(_OPUS_MODEL_NAME)
+    print("[mekai] OPUS-MT model cached successfully. You can now start the server.")
+
+
+def predownload_paddle_models() -> None:
+    """
+    Pre-download PaddleOCR models so they are baked into the Docker image.
+    Called during `docker build` via `python main.py --install-ocr`.
+    """
+    log.info("Pre-downloading PaddleOCR models…")
+    get_paddle_ocr()
+    log.info("PaddleOCR models cached.")
+
+
+# ─── CORS configuration ──────────────────────────────────────
+
+_env_origins = os.environ.get("MEKAI_ALLOWED_ORIGINS", "")
+if _env_origins:
+    ALLOWED_ORIGINS = [
+        o.strip()
+        for o in _env_origins.replace("\r", "").replace("\n", ",").split(",")
+        if o.strip()
+    ]
+else:
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "https://mekaiscans.vercel.app",
+    ]
+
+# ─── FastAPI app ──────────────────────────────────────────────
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Eagerly load models on startup so the first request is fast."""
+    try:
+        get_paddle_ocr()
+    except Exception as exc:
+        log.warning("PaddleOCR pre-load failed (will retry on first request): %s", exc)
+    try:
+        get_opus_translator()
+    except Exception as exc:
+        log.warning("OPUS-MT pre-load failed (will retry on first request): %s", exc)
+    gc.collect()
+    yield
+
+
+app = FastAPI(
+    title="Mekai API",
+    description="Lightweight manga OCR + translation service",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+# ─── Helper: image decoding ──────────────────────────────────
+
+def _decode_base64_image(image_b64: str) -> Image.Image:
+    """Decode a base64 (with optional data-URL prefix) string to a PIL Image."""
+    if "," in image_b64:
+        image_b64 = image_b64.split(",", 1)[1]
+    img_bytes = base64.b64decode(image_b64)
+    return Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+
+def _run_paddle_ocr(img: Image.Image) -> str:
+    """
+    Run PaddleOCR on a PIL Image and return concatenated text.
+
+    PaddleOCR returns a list of pages, each containing a list of
+    (bounding_box, (text, confidence)) tuples.  We concatenate all
+    recognised text fragments.
+    """
+    import numpy as np
+
+    ocr = get_paddle_ocr()
+    img_array = np.array(img)
+    results = ocr.ocr(img_array, cls=True)  # type: ignore[union-attr]
+
+    if not results:
+        return ""
+
+    lines: list[str] = []
+    for page in results:
+        if not page:
+            continue
+        for detection in page:
+            # detection = [bounding_box, (text, score)]
+            if detection and len(detection) >= 2:
+                text_info = detection[1]
+                if isinstance(text_info, (list, tuple)) and len(text_info) >= 1:
+                    text = str(text_info[0]).strip()
+                    if text:
+                        lines.append(text)
+
+    return " ".join(lines)
+
+
+# ─── Health endpoints ─────────────────────────────────────────
+
+
+@app.get("/")
+async def root():
+    """Root health check."""
+    return {"status": "ok", "service": "mekai-api"}
+
+
+@app.get("/ocr/health")
+async def ocr_health():
+    """Probe: returns 200 when PaddleOCR is loadable."""
+    try:
+        get_paddle_ocr()
+        return {"status": "ok"}
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unavailable", "error": str(exc)},
+        )
+
+
+@app.get("/translate/health")
+async def translate_health():
+    """Probe: returns 200 when OPUS-MT ja→en is ready."""
+    try:
+        get_opus_translator()
+        return {"status": "ok"}
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unavailable",
+                "error": str(exc),
+                "hint": "Run: python main.py --install-translate",
+            },
+        )
+
+
+# ─── OCR endpoint ─────────────────────────────────────────────
+
+
+@app.post("/ocr")
+async def ocr(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+):
+    """
+    Run PaddleOCR on a manga panel image.
+
+    Accepts either:
+      • **multipart/form-data** with field ``file`` (binary upload)
+      • **JSON body**: ``{ "image": "<base64 or data-url>" }``
+
+    Returns: ``{ "text": "recognised Japanese text" }``
+    """
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type and file is not None:
+        # ── multipart upload path ─────────────────────────────
+        try:
+            raw = await file.read()
+            img = Image.open(io.BytesIO(raw)).convert("RGB")
+        except Exception as exc:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Invalid image: {exc}"},
+            )
+    else:
+        # ── JSON / base64 path ────────────────────────────────
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Expected JSON body with 'image' field"},
+            )
+        image_b64: str = body.get("image", "")
+        if not image_b64:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Missing 'image' field in JSON body"},
+            )
+        try:
+            img = _decode_base64_image(image_b64)
+        except Exception as exc:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Invalid base64 image: {exc}"},
+            )
+
+    try:
+        text = _run_paddle_ocr(img)
+        return {"text": text}
+    except Exception as exc:
+        log.error("OCR failed: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(exc)},
+        )
+    finally:
+        gc.collect()
+
+
+# ─── Translation endpoint ────────────────────────────────────
+
+
+@app.post("/translate")
+async def translate(request: Request):
+    """
+    Translate Japanese → English via OPUS-MT (Helsinki-NLP/opus-mt-ja-en).
+
+    Accepts JSON: ``{ "q": "日本語テキスト", "source": "ja", "target": "en" }``
+    Returns JSON: ``{ "translatedText": "English text" }``
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Expected JSON body"},
+        )
+
+    text: str = body.get("q", "").strip()
+    if not text:
+        return {"translatedText": ""}
+
+    try:
+        result = _translate_opus(text)
+        return {"translatedText": result}
+    except Exception as exc:
+        log.error("Translation failed: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(exc)},
+        )
+
+
+# ─── CLI entrypoint ──────────────────────────────────────────
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Mekai API server")
+    parser.add_argument("--port", type=int, default=5100, help="Port (default 5100)")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind address")
+    parser.add_argument(
+        "--install-translate",
+        action="store_true",
+        help="One-time download of the OPUS-MT ja→en model (~300 MB), then exit.",
+    )
+    parser.add_argument(
+        "--install-ocr",
+        action="store_true",
+        help="Pre-download PaddleOCR models (used in Dockerfile), then exit.",
+    )
+    args = parser.parse_args()
+
+    if args.install_translate:
+        install_opus_ja_en()
+        sys.exit(0)
+
+    if args.install_ocr:
+        predownload_paddle_models()
+        sys.exit(0)
+
+    port = int(os.environ.get("PORT", args.port))
+
+    log.info("Starting Mekai API on http://%s:%d", args.host, port)
+    log.info("Allowed CORS origins: %s", ALLOWED_ORIGINS)
+
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host=args.host,
+        port=port,
+        workers=1,
+        log_level="info",
+    )

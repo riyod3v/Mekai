@@ -1,34 +1,29 @@
-# Mekai Local Services — Python dependencies
+# Mekai API — Lightweight PaddleOCR backend
 #
-# Recommended setup (Python 3.11 or 3.12 via uv):
+# Target: Railway free tier (500 MB RAM limit)
+# Stack:  FastAPI + PaddleOCR (CPU-only) + OPUS-MT (Helsinki-NLP/opus-mt-ja-en)
 #
-#   uv python install 3.11
-#   uv venv --python 3.11 .venv
-#   .venv\Scripts\activate          # Windows PowerShell
-#   uv pip install -r requirements.txt
+# Install (x86_64):
+#   pip install -r requirements.txt
+#   python main.py --install-translate   # one-time OPUS-MT model download (~300 MB)
 #
-# manga-ocr pulls in torch (~2 GB) on first install.
-# If you only want translation, comment out the manga-ocr line.
+# ARM64 / Apple Silicon: see README.md for workarounds.
 
-flask>=3.0,<4.0
-flask-cors>=4.0,<5.0
-gunicorn>=22.0
-Pillow>=10.0
+# ── Web framework ──────────────────────────────────────────────
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+python-multipart>=0.0.9        # required for UploadFile support
 
-# --- OCR (optional — comment out to skip ~2 GB download) ---
-manga-ocr>=0.1.11
+# ── Image handling ─────────────────────────────────────────────
+Pillow>=10.0,<11.0
 
-# --- Translation option A: Argos Translate (lightweight, ~100 MB) ---
-# Works on Python 3.11/3.12. After installing run:
-#   python server.py --install-translate
-argostranslate>=1.9
+# ── OCR engine (CPU-only PaddlePaddle + PaddleOCR) ────────────
+# paddlepaddle CPU-only — ~90 MB, no CUDA/cuDNN deps
+paddlepaddle>=2.6.0,<3.0
+paddleocr>=2.9.0,<3.0
 
-# --- Translation option B: OPUS-MT via HuggingFace (higher quality, ~300 MB) ---
-# Requires transformers + sentencepiece. Model downloads on first use (or via
-# python server.py --install-translate). Comment out Argos above if preferred.
-transformers>=4.40
+# ── Translation — OPUS-MT ja→en (Helsinki-NLP/opus-mt-ja-en) ──
+# torch is already pulled in transitively by paddlepaddle/paddleocr.
+# We only need the transformers tokenizer/model wrapper + sentencepiece.
+transformers>=4.40,<5.0
 sentencepiece>=0.2.0
-# torch CPU-only — much smaller than the default CUDA build:
-#   uv pip install torch --index-url https://download.pytorch.org/whl/cpu
-# Add that line above before running uv pip install -r requirements.txt,
-# or pre-install torch CPU manually before running this file.
