@@ -97,7 +97,7 @@ def get_paddle_ocr():
                 cls_model_dir=None,   # auto-download default cls model
                 det_db_score_mode="slow",
                 det_db_box_thresh=0.3,
-                rec_batch_num=6,
+                rec_batch_num=2,
             )
             log.info("PaddleOCR ready.")
         except Exception as e:
@@ -214,21 +214,7 @@ _ALLOW_ALL_LOCAL = os.environ.get("MEKAI_ALLOW_ALL_LOCAL", "1") == "1"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Eagerly load models on startup so the first request is fast."""
-    # Skip PaddleOCR pre-load on Windows to avoid shm.dll issues
-    if os.name == 'nt':  # Windows
-        log.warning("Skipping PaddleOCR pre-load on Windows (will load on first request)")
-    else:
-        try:
-            get_paddle_ocr()
-        except Exception as exc:
-            log.warning("PaddleOCR pre-load failed (will retry on first request): %s", exc)
-    
-    try:
-        get_opus_translator()
-    except Exception as exc:
-        log.warning("OPUS-MT pre-load failed (will retry on first request): %s", exc)
-    gc.collect()
+    log.info("Mekai API starting \u2014 models will load lazily on first request.")
     yield
 
 
@@ -380,6 +366,7 @@ async def ocr(
 
     Returns: ``{ "text": "recognised Japanese text" }``
     """
+    log.info("OCR request received")
     content_type = request.headers.get("content-type", "")
 
     if "multipart/form-data" in content_type and file is not None:
@@ -467,7 +454,7 @@ async def translate(request: Request):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Mekai API server")
     parser.add_argument("--port", type=int, default=5100, help="Port (default 5100)")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind address")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address")
     parser.add_argument(
         "--install-translate",
         action="store_true",
