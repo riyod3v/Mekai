@@ -1,9 +1,9 @@
-// src/lib/aiPipeline.ts
-import { type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr';
-import { translateJapaneseToEnglishWithProvider } from '@/lib/translate';
-import { toRomaji } from '@/lib/romaji';
-import { isMangaOcrAvailable, localMangaOcr } from '@/lib/manga-ocr-py-API';
-import type { TranslationProvider } from '@/lib/translate';
+// src/lib/utils/browserAPI.ts
+import { type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr/ocr';
+import { translateJapaneseToEnglishWithProvider } from '@/lib/translate/translate';
+import { toRomaji } from '@/lib/translate/romaji';
+import { isMangaOcrAvailable, localMangaOcr } from '@/lib/api/manga-ocr-py-API';
+import type { TranslationProvider } from '@/lib/translate/translate';
 
 // ─── Public types ─────────────────────────────────────────────
 

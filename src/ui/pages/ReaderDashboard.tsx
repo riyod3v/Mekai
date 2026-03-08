@@ -14,7 +14,7 @@ import { EmptyState } from '@/ui/components/EmptyState';
 import { Modal } from '@/ui/components/Modal';
 import { MangaUploadForm } from '@/ui/components/MangaUploadForm';
 import { ChapterUploadForm } from '@/ui/components/ChapterUploadForm';
-import { formatDistanceToNow } from '@/lib/dateUtils';
+import { formatDistanceToNow } from '@/lib/utils/dateUtils';
 import type { Manga, ChapterFormData } from '@/types';
 
 type Tab = 'shared' | 'private';

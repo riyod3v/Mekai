@@ -8,7 +8,7 @@
 import {
   isLocalTranslateAvailable,
   localTranslateJaToEn,
-} from '@/lib/manga-ocr-py-API';
+} from '@/lib/api/manga-ocr-py-API';
 
 // ─── Public types ───────────────────────────────────────────
 

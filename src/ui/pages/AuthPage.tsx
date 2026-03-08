@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { signIn, signUp, useAuth } from '@/hooks/useAuth';
-import { getSafeRedirectPath } from '@/lib/redirectUtils';
+import { getSafeRedirectPath } from '@/lib/utils/redirectUtils';
 import { useThemeContext } from '@/context/ThemeContext';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import clsx from 'clsx';

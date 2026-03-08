@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { BookOpen, Clock, Hash, ImageIcon } from 'lucide-react';
 import type { Manga } from '@/types';
-import { formatDistanceToNow } from '@/lib/dateUtils';
+import { formatDistanceToNow } from '@/lib/utils/dateUtils';
 
 interface Props {
   manga: Manga;

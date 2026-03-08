@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { FullPageLoader } from './LoadingSpinner';
-import { isAllowedRedirectPath } from '@/lib/redirectUtils';
+import { isAllowedRedirectPath } from '@/lib/utils/redirectUtils';
 import type { Role } from '@/types';
 
 interface Props {

@@ -10,14 +10,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import { FullPageLoader } from '@/ui/components/LoadingSpinner';
 
-import AuthPage from '@/pages/AuthPage';
-import ReaderDashboard from '@/pages/ReaderDashboard';
-import TranslatorDashboard from '@/pages/TranslatorDashboard';
-import MangaEntryPage from '@/pages/MangaEntryPage';
-import MangaReaderPage from '@/pages/MangaReaderPage';
-import WordVaultPage from '@/pages/WordVaultPage';
-import LandingPage from '@/pages/LandingPage';
-import SettingsPage from '@/pages/Settings';
+import AuthPage from '@/ui/pages/AuthPage';
+import ReaderDashboard from '@/ui/pages/ReaderDashboard';
+import TranslatorDashboard from '@/ui/pages/TranslatorDashboard';
+import MangaEntryPage from '@/ui/pages/MangaEntryPage';
+import MangaReaderPage from '@/ui/pages/MangaReaderPage';
+import WordVaultPage from '@/ui/pages/WordVaultPage';
+import LandingPage from '@/ui/pages/LandingPage';
+import SettingsPage from '@/ui/pages/Settings';
 
 const queryClient = new QueryClient({
   defaultOptions: {

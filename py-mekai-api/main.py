@@ -190,13 +190,12 @@ def _translate_opus(text: str) -> str:
     PyTorch memory on Railway's constrained containers.
     """
     import torch
-    import re
 
     acquired = _translate_semaphore.acquire(timeout=_QUEUE_TIMEOUT_S)
     if not acquired:
         raise TimeoutError("Translation queue full — another request is still processing")
     try:
-        text = re.sub(r"\s+", "", text)
+        text = text.strip()
         tokenizer, model = get_opus_translator()
         inputs = tokenizer(
             text,
@@ -328,8 +327,6 @@ app.add_middleware(
 
 # ─── Global exception handler — ensures CORS headers on 5xx ──
 
-import re as _re
-
 def _is_origin_allowed(origin: str) -> bool:
     """Return True if origin is in the explicit list or matches *.vercel.app."""
     if not origin:
@@ -422,7 +419,7 @@ def _decode_base64_image(image_b64: str) -> Image.Image:
 # 640px is the sweet spot for Railway: large enough for PaddleOCR accuracy on
 # manga text bubbles, small enough to stay within Railway's 500 MB RAM and
 # finish well under the 60s edge timeout.  (800→640 = ~36% fewer pixels.)
-_OCR_MAX_DIMENSION = 640
+_OCR_MAX_DIMENSION = 512    
 
 # Minimum dimension — PaddleOCR recognition expects ≥32px height.  Tiny crops
 # get upscaled so the recognition model can read them.

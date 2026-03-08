@@ -13,7 +13,7 @@ import { Modal } from '@/ui/components/Modal';
 import { ChapterUploadForm } from '@/ui/components/ChapterUploadForm';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
-import { formatDistanceToNow, formatDate } from '@/lib/dateUtils';
+import { formatDistanceToNow, formatDate } from '@/lib/utils/dateUtils';
 import type { ChapterFormData } from '@/types';
 
 export default function MangaEntryPage() {

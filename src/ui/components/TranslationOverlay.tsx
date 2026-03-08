@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Trash2, Star, Volume2, ChevronUp, X, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import type { RegionBox } from '@/types';
-import type { TranslationProvider } from '@/lib/translate';
+import type { TranslationProvider } from '@/lib/translate/translate';
 
 interface Props {
   id: string;

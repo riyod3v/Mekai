@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
-  Scan, History, X, List, Square, Wand2, Menu,
+  Scan, History, X, List, Square, Menu,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { useNotification } from '@/context/NotificationContext';
@@ -19,10 +19,9 @@ import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import { ErrorState } from '@/ui/components/ErrorState';
 import { OCRSelectionLayer, type SelectionRect } from '@/ui/components/OCRSelectionLayer';
 import { TranslationOverlay } from '@/ui/components/TranslationOverlay';
-import { BatchTranslationPanel } from '@/ui/components/BatchTranslationPanel';
 import { HistoryPanel } from '@/ui/components/HistoryPanel';
 import { Drawer } from '@/ui/components/Drawer';
-import { ocrAndTranslate } from '@/lib/browserAPI';
+import { ocrAndTranslate } from '@/lib/utils/browserAPI';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
 import {
@@ -253,8 +252,6 @@ export default function MangaReaderPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [ocr, setOcr] = useState<OcrState | null>(null);
   const [userOverlays, setUserOverlays] = useState<Overlay[]>([]);
-  const [showBatchTranslation, setShowBatchTranslation] = useState(false);
-  const [autoDetectedBubbles, setAutoDetectedBubbles] = useState<Array<{ pageIndex: number; region: RegionBox }>>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -529,41 +526,6 @@ export default function MangaReaderPage() {
   [chapter, addHistory, canPublishTranslations, queryClient, chapterId]
 );
 
-  // ── Batch translation handlers ───────────────────────────────
-  const handleBatchTranslationComplete = useCallback((bubble: any) => {
-    const newOverlay: Overlay = {
-      id: bubble.id,
-      key: `${currentPage}-${regionHash(bubble.region)}`,
-      pageIndex: currentPage,
-      region: bubble.region,
-      ocrText: bubble.result.ocrText,
-      translated: bubble.result.translated,
-      romaji: bubble.result.romaji,
-      source: 'history',
-      ocrSource: 'manga-ocr',
-      translationProvider: 'py-mekai-api',
-    };
-
-    setUserOverlays(prev => [newOverlay, ...prev]);
-    
-    if (bubble.result.ocrText.length > 1 && bubble.result.translated.length > 1) {
-      addToWordVault({
-        chapter_id: chapterId ?? undefined,
-        page_index: newOverlay.pageIndex,
-        region: newOverlay.region,
-        region_hash: regionHash(newOverlay.region),
-        original: newOverlay.ocrText,
-        translated: newOverlay.translated,
-        romaji: newOverlay.romaji,
-      });
-    }
-  }, [chapterId, currentPage]);
-
-  const handleAllTranslationsComplete = useCallback(() => {
-    notify.success('Batch translation completed!');
-    setShowBatchTranslation(false);
-  }, [notify]);
-
   // ── Image ref handler ─────────────────────────────────────────
   const handleImageRef = useCallback((pageIndex: number, ref: HTMLImageElement | null) => {
     imageRefs.current[pageIndex] = ref;
@@ -751,20 +713,6 @@ export default function MangaReaderPage() {
                 <Scan className="h-4 w-4" />
                 {selectionMode ? 'Exit OCR' : 'Enable OCR'}
               </button>
-              )}
-
-              {/* Batch translation - only for translators */}
-              {isTranslator && (
-                <button
-                  onClick={() => {
-                    setShowBatchTranslation(!showBatchTranslation);
-                    setToolsMenuOpen(false);
-                  }}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  <Wand2 className="h-4 w-4" />
-                  Batch Translate
-                </button>
               )}
 
               {/* History toggle */}
@@ -1013,15 +961,6 @@ export default function MangaReaderPage() {
         )}
       </Drawer>
 
-      {/* Batch Translation Panel */}
-      {showBatchTranslation && (
-        <BatchTranslationPanel
-          imageRef={{ current: imageRefs.current[currentPage] }}
-          pageIndex={currentPage}
-          onTranslationComplete={handleBatchTranslationComplete}
-          onAllComplete={handleAllTranslationsComplete}
-        />
-      )}
     </div>
   );
 }
