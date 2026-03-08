@@ -27,3 +27,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# AI working documents — never commit these
+AI _REFACTOR _DEBUG.md
+AI_CONTEXT.md
+AI_RULESET.md
+PROJECT_HANDOFF.md
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Python virtual envs inside project
+venv/
+.venv/
+env/

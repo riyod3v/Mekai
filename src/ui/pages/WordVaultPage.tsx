@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { logger } from '@/lib/utils/logger';
 import { Vault, Trash2, Search, Volume2 } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,7 +25,7 @@ export default function WordVaultPage() {
         window.speechSynthesis.speak(utterance);
       }
     } catch (error) {
-      console.warn('Text-to-speech not available:', error);
+      logger.warn('[WordVaultPage] Text-to-speech not available:', error);
     }
   }, []);
 

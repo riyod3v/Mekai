@@ -50,14 +50,14 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 except ImportError as e:
-    print(f"Error importing FastAPI: {e}")
+    sys.stderr.write(f"[mekai] CRITICAL  Failed to import FastAPI: {e}\n")
     sys.exit(1)
 
 # PIL import
 try:
     from PIL import Image
 except ImportError as e:
-    print(f"Error importing PIL: {e}")
+    sys.stderr.write(f"[mekai] CRITICAL  Failed to import PIL: {e}\n")
     sys.exit(1)
 
 # ─── Logging ───────────────────────────────────────────────────
@@ -224,13 +224,13 @@ def install_opus_ja_en() -> None:
     try:
         from transformers import MarianMTModel, MarianTokenizer
     except ImportError:
-        print("ERROR: transformers not installed. Run: pip install transformers sentencepiece")
+        log.error("transformers not installed. Run: pip install transformers sentencepiece")
         sys.exit(1)
 
-    print(f"[mekai] Downloading OPUS-MT model '{_OPUS_MODEL_NAME}' (~300 MB). Please wait…")
+    log.info("Downloading OPUS-MT model '%s' (~300 MB). Please wait…", _OPUS_MODEL_NAME)
     MarianTokenizer.from_pretrained(_OPUS_MODEL_NAME)
     MarianMTModel.from_pretrained(_OPUS_MODEL_NAME)
-    print("[mekai] OPUS-MT model cached successfully. You can now start the server.")
+    log.info("OPUS-MT model cached successfully. You can now start the server.")
 
 
 def predownload_paddle_models() -> None:

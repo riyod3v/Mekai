@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Trash2, Star, Volume2, ChevronUp, X, Copy, Check } from 'lucide-react';
+import { logger } from '@/lib/utils/logger';
 import clsx from 'clsx';
 import type { RegionBox } from '@/types';
 import type { TranslationProvider } from '@/lib/translate/translate';
@@ -349,7 +350,7 @@ export function TranslationOverlay({
         window.speechSynthesis.speak(utterance);
       }
     } catch (error) {
-      console.warn('Text-to-speech not available:', error);
+      logger.warn('[TranslationOverlay] Text-to-speech not available:', error);
     }
   }, [romaji]);
 

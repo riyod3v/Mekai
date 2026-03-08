@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { WordVaultEntry, CreateWordVaultInput } from '@/types';
+import { logger } from '@/lib/utils/logger';
 
 // ─── Queries ─────────────────────────────────────────────────
 
@@ -64,13 +65,10 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     .single();
 
   if (error) {
-    // Log only non-sensitive DB error metadata — do NOT log the payload,
-    // which may contain the user's translated text and OCR regions.
-    console.error('[word_vault] insert error:', {
-      message: error.message,
-      code: error.code,
-    });
-    throw new Error(`Word Vault insert failed: ${error.message}`);
+    // Log only non-sensitive DB error metadata (dev only) — do NOT log the
+    // payload, which may contain the user's translated text and OCR regions.
+    logger.error('[word_vault] insert error:', { message: error.message, code: error.code });
+    throw new Error('Failed to save to Word Vault. Please try again.');
   }
 
   return data as WordVaultEntry;

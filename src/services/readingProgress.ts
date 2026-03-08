@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { ReadingProgressRow } from '@/types';
+import { logger } from '@/lib/utils/logger';
 
 // ─── Queries ─────────────────────────────────────────────────
 
@@ -47,6 +48,6 @@ export async function upsertReadingProgress(
     );
 
   if (error) {
-    console.warn('[readingProgress] upsert failed:', error.message);
+    logger.warn('[readingProgress] upsert failed:', error.message);
   }
 }

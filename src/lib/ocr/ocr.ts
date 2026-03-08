@@ -13,6 +13,8 @@
 /** Set to `true` to enable verbose OCR logging in the browser console. */
 const DEBUG_OCR = false;
 
+import { logger } from '@/lib/utils/logger';
+
 // ─── Types ────────────────────────────────────────────────────
 
 /** Normalised bounding box — all values are fractions of image dimensions (0..1). */
@@ -461,8 +463,7 @@ export async function ocrFromImageElement(
     // logger must always be a function — passing undefined throws a TypeError
     logger: DEBUG_OCR
       ? (m: { status?: string; progress?: number }) => {
-          // eslint-disable-next-line no-console
-          console.log('[OCR]', m.status, m.progress);
+          logger.log('[OCR]', m.status, m.progress);
         }
       : () => {}, // no-op keeps Tesseract happy while suppressing noise
   });
@@ -478,7 +479,7 @@ export async function ocrFromImageElement(
     } = await worker.recognize(tightCanvas);
 
     let result = cleanText(text);
-    if (DEBUG_OCR) console.log('[OCR] PSM 6 result:', result); // eslint-disable-line no-console
+    if (DEBUG_OCR) logger.log('[OCR] PSM 6 result:', result);
 
     // If result is too short, retry with sparse-text mode (PSM 11)
     if (result.length < 2) {
@@ -489,7 +490,7 @@ export async function ocrFromImageElement(
         data: { text: retryText },
       } = await worker.recognize(tightCanvas);
       result = cleanText(retryText);
-      if (DEBUG_OCR) console.log('[OCR] PSM 11 retry:', result); // eslint-disable-line no-console
+      if (DEBUG_OCR) logger.log('[OCR] PSM 11 retry:', result);
     }
 
     return result;

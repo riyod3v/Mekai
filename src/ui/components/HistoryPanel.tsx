@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Trash2, Clock, Crosshair, Volume2, Star, Copy, Check } from 'lucide-react';
+import { logger } from '@/lib/utils/logger';
 import { useNotification } from '@/context/NotificationContext';
 import {
   useTranslationHistory,
@@ -199,7 +200,7 @@ export function HistoryPanel({ chapterId, onHighlight, onSaveToVault }: Props) {
         window.speechSynthesis.speak(utterance);
       }
     } catch (error) {
-      console.warn('Text-to-speech not available:', error);
+      logger.warn('[HistoryPanel] Text-to-speech not available:', error);
     }
   }, []);
 

@@ -13,6 +13,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/utils/logger';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -32,7 +33,7 @@ export const isSupabaseConfigured =
   supabaseUrl.startsWith('https://');
 
 if (!isSupabaseConfigured) {
-  console.warn(
+  logger.warn(
     '[Mekai] Supabase credentials are missing or are still placeholders.\n' +
     'Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.'
   );
@@ -52,13 +53,13 @@ const PROJECT_REF = supabaseUrl
   for (const key of staleKeys) {
     if (localStorage.getItem(key) !== null) {
       localStorage.removeItem(key);
-      console.warn(`[Mekai] Removed stale auth key: "${key}". Please log in again.`);
+      logger.warn(`[Mekai] Removed stale auth key: "${key}". Please log in again.`);
     }
   }
   for (const key of Object.keys(localStorage)) {
     if (key.startsWith('sb-') && key.endsWith('-auth-token') && !key.includes(PROJECT_REF)) {
       localStorage.removeItem(key);
-      console.warn(`[Mekai] Removed foreign project auth key: "${key}". Please log in again.`);
+      logger.warn(`[Mekai] Removed foreign project auth key: "${key}". Please log in again.`);
     }
   }
 })();

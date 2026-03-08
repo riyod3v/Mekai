@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { logger } from '@/lib/utils/logger';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
@@ -580,9 +581,8 @@ export default function MangaReaderPage() {
         });
         notify.success('Saved to Word Vault');
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to save to Word Vault';
-        notify.error(msg);
-        console.error('[handleSaveToVault] error:', err);
+        logger.error('[handleSaveToVault] error:', err);
+        notify.error('Failed to save to Word Vault. Please try again.');
       }
     },
     [mergedOverlays, chapterId, notify],
