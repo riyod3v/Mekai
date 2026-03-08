@@ -295,7 +295,7 @@ async def _cors_safety_net(request: Request, call_next):
         if origin in ALLOWED_ORIGINS:
             headers["Access-Control-Allow-Origin"] = origin
             headers["Access-Control-Allow-Credentials"] = "true"
-        return JSONResponse(status_code=200, headers=headers)
+        return JSONResponse(content="", status_code=200, headers=headers)
 
     try:
         response = await call_next(request)
