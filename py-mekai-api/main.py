@@ -89,15 +89,15 @@ def get_paddle_ocr():
         try:
             _paddle_ocr = PaddleOCR(
                 lang="japan",
-                use_angle_cls=True,
+                use_angle_cls=False,
                 use_gpu=False,
                 show_log=False,
                 det_model_dir=None,   # auto-download default det model
                 rec_model_dir=None,   # auto-download default japan rec model
                 cls_model_dir=None,   # auto-download default cls model
-                det_db_score_mode="slow",
+                det_db_score_mode="fast",
                 det_db_box_thresh=0.3,
-                rec_batch_num=2,
+                rec_batch_num=1,
             )
             log.info("PaddleOCR ready.")
         except Exception as e:
@@ -147,19 +147,24 @@ def get_opus_translator():
 def _translate_opus(text: str) -> str:
     """Translate *text* from Japanese to English using the cached OPUS-MT model."""
     import torch
+    import re
 
+    text = re.sub(r"\s+", "", text)
     tokenizer, model = get_opus_translator()
     inputs = tokenizer(
         text,
         return_tensors="pt",
-        padding=True,
         truncation=True,
-        max_length=512,
     )
     with torch.no_grad():
-        output = model.generate(**inputs)
-    return tokenizer.decode(output[0], skip_special_tokens=True)
-    
+        output = model.generate(
+            **inputs,
+            max_length=512,
+            num_beams=4,
+            early_stopping=True,
+        )
+    result = tokenizer.decode(output[0], skip_special_tokens=True)
+
     del inputs
     del output
     gc.collect()
@@ -387,9 +392,11 @@ def _run_paddle_ocr(img: Image.Image) -> str:
     import numpy as np
 
     ocr = get_paddle_ocr()
+    if img.width > 1200:
+        img = img.resize((img.width  // 2, img.height // 2))
     img_array = np.array(img)
     img_array = _preprocess_manga_image(img_array)
-    results = ocr.ocr(img_array, cls=True)  # type: ignore[union-attr]
+    results = ocr.ocr(img_array, cls=False)  # type: ignore[union-attr]
 
     if not results:
         return ""
@@ -407,7 +414,7 @@ def _run_paddle_ocr(img: Image.Image) -> str:
                     if text:
                         lines.append(text)
 
-    return " ".join(lines)
+    return "".join(lines)
 
 
 # ─── Health endpoints ─────────────────────────────────────────
