@@ -258,7 +258,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -267,6 +267,20 @@ app.add_middleware(
 
 
 # ─── Global exception handler — ensures CORS headers on 5xx ──
+
+import re as _re
+
+def _is_origin_allowed(origin: str) -> bool:
+    """Return True if origin is in the explicit list or matches *.vercel.app."""
+    if not origin:
+        return False
+    if origin in ALLOWED_ORIGINS:
+        return True
+    # Also accept any Vercel preview/branch deploy
+    if _re.match(r"^https://.*\.vercel\.app$", origin):
+        return True
+    return False
+
 
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
@@ -277,9 +291,7 @@ async def _global_exception_handler(request: Request, exc: Exception):
     """
     origin = request.headers.get("origin", "")
     headers = {}
-    if origin in ALLOWED_ORIGINS or any(
-        origin.startswith(o) for o in ALLOWED_ORIGINS
-    ):
+    if _is_origin_allowed(origin):
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
     log.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc)
@@ -306,7 +318,7 @@ async def _cors_safety_net(request: Request, call_next):
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Max-Age": "86400",
         }
-        if origin in ALLOWED_ORIGINS:
+        if _is_origin_allowed(origin):
             headers["Access-Control-Allow-Origin"] = origin
             headers["Access-Control-Allow-Credentials"] = "true"
         return JSONResponse(content="", status_code=200, headers=headers)
@@ -316,7 +328,7 @@ async def _cors_safety_net(request: Request, call_next):
     except Exception:
         # If *anything* blows up, return a CORS-safe 500
         headers = {}
-        if origin in ALLOWED_ORIGINS:
+        if _is_origin_allowed(origin):
             headers["Access-Control-Allow-Origin"] = origin
             headers["Access-Control-Allow-Credentials"] = "true"
         return JSONResponse(
@@ -327,7 +339,7 @@ async def _cors_safety_net(request: Request, call_next):
 
     # Ensure the header is present even if CORSMiddleware didn't fire
     if (
-        origin in ALLOWED_ORIGINS
+        _is_origin_allowed(origin)
         and "access-control-allow-origin" not in response.headers
     ):
         response.headers["Access-Control-Allow-Origin"] = origin
@@ -346,6 +358,13 @@ def _decode_base64_image(image_b64: str) -> Image.Image:
     return Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
 
+# Maximum dimension (width or height) for OCR input — keeps memory under control.
+_OCR_MAX_DIMENSION = 960
+
+# Maximum base64 payload size (~10 MB encoded ≈ ~7.5 MB raw image)
+_MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
+
+
 def _preprocess_manga_image(img_array):
     """
     Prepare a manga text region for PaddleOCR.
@@ -356,6 +375,9 @@ def _preprocess_manga_image(img_array):
     kana strokes that binarisation destroys, causing PaddleOCR to miss
     entire text lines.  A light sharpen improves edge definition without
     altering stroke width.
+
+    Memory-efficient: intermediate arrays are deleted as soon as possible
+    to stay within Railway's 500 MB limit.
     """
     import cv2
     import numpy as np
@@ -363,12 +385,14 @@ def _preprocess_manga_image(img_array):
     # 1. Grayscale
     if len(img_array.shape) == 3:
         gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        del img_array
     else:
         gray = img_array
 
     # 2. CLAHE — adaptive contrast enhancement
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
+    del gray
 
     # 3. Sharpen — boost edges without altering stroke geometry
     kernel = np.array([
@@ -377,6 +401,7 @@ def _preprocess_manga_image(img_array):
         [ 0, -1,  0],
     ], dtype=np.float32)
     sharpened = cv2.filter2D(enhanced, -1, kernel)
+    del enhanced
 
     return sharpened
 
@@ -388,15 +413,35 @@ def _run_paddle_ocr(img: Image.Image) -> str:
     PaddleOCR returns a list of pages, each containing a list of
     (bounding_box, (text, confidence)) tuples.  We concatenate all
     recognised text fragments.
+
+    Image is aggressively downscaled so peak memory stays within
+    Railway's 500 MB container limit.
     """
     import numpy as np
 
+    # Free lingering garbage before the heavy work
+    gc.collect()
+
     ocr = get_paddle_ocr()
-    if img.width > 1200:
-        img = img.resize((img.width  // 2, img.height // 2))
+
+    # Downscale so the longest side ≤ _OCR_MAX_DIMENSION.
+    # This dramatically reduces numpy/CV2 memory and speeds up OCR.
+    max_dim = max(img.width, img.height)
+    if max_dim > _OCR_MAX_DIMENSION:
+        scale = _OCR_MAX_DIMENSION / max_dim
+        img = img.resize(
+            (int(img.width * scale), int(img.height * scale)),
+            Image.LANCZOS,
+        )
+        log.info("Image downscaled to %dx%d for OCR", img.width, img.height)
+
     img_array = np.array(img)
+    del img  # free PIL image — we only need the numpy array now
+
     img_array = _preprocess_manga_image(img_array)
     results = ocr.ocr(img_array, cls=False)  # type: ignore[union-attr]
+    del img_array  # free processed array immediately
+    gc.collect()
 
     if not results:
         return ""
@@ -461,6 +506,8 @@ async def ocr(
 
     Returns: ``{ "text": "recognised Japanese text" }``
     """
+    import asyncio
+
     log.info("OCR request received")
     content_type = request.headers.get("content-type", "")
 
@@ -468,7 +515,13 @@ async def ocr(
         # ── multipart upload path ─────────────────────────────
         try:
             raw = await file.read()
+            if len(raw) > _MAX_PAYLOAD_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"error": "Image too large (max ~10 MB)"},
+                )
             img = Image.open(io.BytesIO(raw)).convert("RGB")
+            del raw  # free encoded bytes immediately
         except Exception as exc:
             return JSONResponse(
                 status_code=400,
@@ -484,13 +537,20 @@ async def ocr(
                 content={"error": "Expected JSON body with 'image' field"},
             )
         image_b64: str = body.get("image", "")
+        del body  # free the parsed JSON dict
         if not image_b64:
             return JSONResponse(
                 status_code=400,
                 content={"error": "Missing 'image' field in JSON body"},
             )
+        if len(image_b64) > _MAX_PAYLOAD_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Image too large (max ~10 MB base64)"},
+            )
         try:
             img = _decode_base64_image(image_b64)
+            del image_b64  # free base64 string immediately
         except Exception as exc:
             return JSONResponse(
                 status_code=400,
@@ -498,8 +558,20 @@ async def ocr(
             )
 
     try:
-        text = _run_paddle_ocr(img)
+        # Run OCR in a thread with a 60-second timeout to prevent hanging
+        loop = asyncio.get_event_loop()
+        text = await asyncio.wait_for(
+            loop.run_in_executor(None, _run_paddle_ocr, img),
+            timeout=60.0,
+        )
+        del img
         return {"text": text}
+    except asyncio.TimeoutError:
+        log.error("OCR timed out after 60s")
+        return JSONResponse(
+            status_code=504,
+            content={"error": "OCR processing timed out"},
+        )
     except Exception as exc:
         log.error("OCR failed: %s", exc)
         return JSONResponse(
@@ -517,11 +589,18 @@ async def ocr_debug(file: UploadFile = File(...)):
 
     try:
         raw = await file.read()
+        if len(raw) > _MAX_PAYLOAD_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"success": False, "error": "Image too large (max ~10 MB)"},
+            )
         img = Image.open(io.BytesIO(raw)).convert("RGB")
+        del raw
 
         log.info("OCR debug request received")
 
         text = _run_paddle_ocr(img)
+        del img
 
         return {
             "success": True,
