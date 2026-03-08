@@ -223,9 +223,18 @@ ALLOWED_ORIGINS = list(dict.fromkeys(_REQUIRED_ORIGINS + _extra))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Mekai API starting \u2014 models will load lazily.")
+    log.info("Mekai API starting — preloading models at startup.")
     log.info("Allowed CORS origins: %s", ALLOWED_ORIGINS)
 
+    # Preload PaddleOCR so the first /ocr request doesn't timeout
+    try:
+        log.info("Loading PaddleOCR model...")
+        get_paddle_ocr()
+        log.info("PaddleOCR ready.")
+    except Exception as exc:
+        log.warning("PaddleOCR preload failed: %s", exc)
+
+    # Preload translation model
     try:
         log.info("Preloading translation model...")
         get_opus_translator()
