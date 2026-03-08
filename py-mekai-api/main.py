@@ -252,6 +252,76 @@ app.add_middleware(
 )
 
 
+# ─── Global exception handler — ensures CORS headers on 5xx ──
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all so that unhandled errors still carry CORS headers.
+    Without this, Railway's proxy might swallow the response and the
+    browser sees a bare 502 without Access-Control-Allow-Origin.
+    """
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in ALLOWED_ORIGINS or any(
+        origin.startswith(o) for o in ALLOWED_ORIGINS
+    ):
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    log.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+        headers=headers,
+    )
+
+
+@app.middleware("http")
+async def _cors_safety_net(request: Request, call_next):
+    """
+    Safety-net middleware that adds CORS headers even when an upstream
+    middleware or handler raises before CORSMiddleware can inject them.
+    Also handles preflight OPTIONS explicitly as a fallback.
+    """
+    origin = request.headers.get("origin", "")
+
+    # Fast-path: preflight OPTIONS
+    if request.method == "OPTIONS":
+        headers = {
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        }
+        if origin in ALLOWED_ORIGINS:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+        return JSONResponse(status_code=200, headers=headers)
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        # If *anything* blows up, return a CORS-safe 500
+        headers = {}
+        if origin in ALLOWED_ORIGINS:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Internal server error"},
+            headers=headers,
+        )
+
+    # Ensure the header is present even if CORSMiddleware didn't fire
+    if (
+        origin in ALLOWED_ORIGINS
+        and "access-control-allow-origin" not in response.headers
+    ):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response
+
+
 # ─── Helper: image decoding ──────────────────────────────────
 
 def _decode_base64_image(image_b64: str) -> Image.Image:
