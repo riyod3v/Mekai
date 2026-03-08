@@ -21,12 +21,26 @@ import os
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
 os.environ['TORCH_DISABLE_SHM'] = '1'
 
+# ── CPU thread limits ─────────────────────────────────────────
+# Railway containers share CPU cores.  Uncontrolled OpenMP / MKL / PaddlePaddle
+# threading causes severe contention that makes OCR 3-5× slower and triggers
+# the 60-second edge-proxy timeout.  Pinning to 2 threads keeps PaddleOCR fast
+# without competing for the scheduler.
+os.environ.setdefault('OMP_NUM_THREADS', '2')
+os.environ.setdefault('MKL_NUM_THREADS', '2')
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '2')
+os.environ.setdefault('GOTO_NUM_THREADS', '2')
+os.environ.setdefault('FLAGS_num_threads', '2')  # PaddlePaddle flag
+
 import argparse
 import base64
 import gc
 import io
 import logging
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -65,24 +79,48 @@ _opus_model: Optional[object] = None
 
 _OPUS_MODEL_NAME = "Helsinki-NLP/opus-mt-ja-en"
 
+# Serialise heavy workloads — PaddlePaddle is NOT thread-safe and running
+# two OCR calls concurrently doubles peak memory, causing OOM / hangs on
+# Railway's constrained containers.  A Semaphore(1) ensures at most one
+# OCR (or translation) inference runs at a time; additional requests wait
+# in line up to _QUEUE_TIMEOUT_S before getting a 503.
+_ocr_semaphore = threading.Semaphore(1)
+_translate_semaphore = threading.Semaphore(1)
+_QUEUE_TIMEOUT_S = 30  # seconds to wait for a slot before returning 503
+
+# Dedicated single-thread executors for OCR and translation.
+# Using a bounded pool (1 worker) instead of the default thread-pool prevents
+# unbounded thread creation and guarantees natural FIFO serialisation.
+_ocr_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ocr")
+_translate_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="translate")
+
+
+def _log_memory():
+    """Log current process RSS for Railway debugging."""
+    try:
+        import resource
+        rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        log.info("Peak RSS: %.1f MB", rss_kb / 1024)
+    except Exception:
+        pass
+
 
 def get_paddle_ocr():
     """
     Return the cached PaddleOCR instance, creating it on first call.
 
-    Configuration tuned for manga:
-      - lang="japan"  → Japanese recognition model
-      - use_angle_cls=True  → handles rotated / vertical text
-      - use_gpu=False → CPU-only (Railway has no GPU)
-      - det_db_score_mode="slow" → better text detection accuracy
-      - show_log=False → reduce noise
+    Configuration tuned for manga on Railway (CPU-only, limited RAM):
+      - lang="japan"                → Japanese recognition model
+      - use_angle_cls=False         → skip angle classification (speed)
+      - use_gpu=False               → CPU-only (Railway has no GPU)
+      - enable_mkldnn=True          → Intel MKL-DNN acceleration
+      - cpu_threads=2               → match OMP_NUM_THREADS env
+      - det_limit_side_len=640      → cap detection input size
+      - det_db_score_mode="fast"    → faster text-box scoring
+      - show_log=False              → reduce noise
     """
     global _paddle_ocr
     if _paddle_ocr is None:
-        # Ensure environment variables are set before importing PaddleOCR
-        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
-        os.environ['TORCH_DISABLE_SHM'] = '1'
-        
         from paddleocr import PaddleOCR
 
         log.info("Loading PaddleOCR (japan, CPU-only)…")
@@ -97,9 +135,14 @@ def get_paddle_ocr():
                 cls_model_dir=None,   # auto-download default cls model
                 det_db_score_mode="fast",
                 det_db_box_thresh=0.3,
+                det_limit_side_len=640,   # cap detection resize
                 rec_batch_num=1,
+                enable_mkldnn=True,       # Intel MKL-DNN for CPU speed
+                cpu_threads=2,            # match thread-limit env vars
+                use_mp=False,             # no multiprocessing
             )
             log.info("PaddleOCR ready.")
+            _log_memory()
         except Exception as e:
             log.error("Failed to initialize PaddleOCR: %s", e)
             raise
@@ -117,10 +160,6 @@ def get_opus_translator():
     """
     global _opus_tokenizer, _opus_model
     if _opus_tokenizer is None or _opus_model is None:
-        # Ensure environment variables are set before importing transformers
-        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
-        os.environ['TORCH_DISABLE_SHM'] = '1'
-        
         try:
             from transformers import MarianMTModel, MarianTokenizer
         except ImportError:
@@ -145,31 +184,39 @@ def get_opus_translator():
 
 
 def _translate_opus(text: str) -> str:
-    """Translate *text* from Japanese to English using the cached OPUS-MT model."""
+    """Translate *text* from Japanese to English using the cached OPUS-MT model.
+
+    Serialised via _translate_semaphore so concurrent calls don't double
+    PyTorch memory on Railway's constrained containers.
+    """
     import torch
     import re
 
-    text = re.sub(r"\s+", "", text)
-    tokenizer, model = get_opus_translator()
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-    )
-    with torch.no_grad():
-        output = model.generate(
-            **inputs,
-            max_length=512,
-            num_beams=4,
-            early_stopping=True,
+    acquired = _translate_semaphore.acquire(timeout=_QUEUE_TIMEOUT_S)
+    if not acquired:
+        raise TimeoutError("Translation queue full — another request is still processing")
+    try:
+        text = re.sub(r"\s+", "", text)
+        tokenizer, model = get_opus_translator()
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
         )
-    result = tokenizer.decode(output[0], skip_special_tokens=True)
+        with torch.no_grad():
+            output = model.generate(
+                **inputs,
+                max_length=512,
+                num_beams=4,
+                early_stopping=True,
+            )
+        result = tokenizer.decode(output[0], skip_special_tokens=True)
 
-    del inputs
-    del output
-    gc.collect()
-
-    return result
+        del inputs, output
+        return result
+    finally:
+        _translate_semaphore.release()
+        gc.collect()
 
 # ─── One-time model installers (CLI) ─────────────────────────
 
@@ -230,6 +277,9 @@ ALLOWED_ORIGINS = list(dict.fromkeys(_REQUIRED_ORIGINS + _extra))
 async def lifespan(app: FastAPI):
     log.info("Mekai API starting — preloading models at startup.")
     log.info("Allowed CORS origins: %s", ALLOWED_ORIGINS)
+    log.info("CPU thread limits: OMP=%s  MKL=%s  PADDLE=%s",
+             os.environ.get('OMP_NUM_THREADS'), os.environ.get('MKL_NUM_THREADS'),
+             os.environ.get('FLAGS_num_threads'))
 
     # Preload PaddleOCR so the first /ocr request doesn't timeout
     try:
@@ -246,7 +296,17 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("Translation preload failed: %s", exc)
 
+    # Report memory after all models are loaded
+    _log_memory()
+    gc.collect()
+    log.info("Startup complete — ready to serve requests.")
+
     yield
+
+    # Shutdown: clean up executors
+    _ocr_executor.shutdown(wait=False)
+    _translate_executor.shutdown(wait=False)
+    log.info("Mekai API shutting down.")
 
 
 app = FastAPI(
@@ -359,7 +419,14 @@ def _decode_base64_image(image_b64: str) -> Image.Image:
 
 
 # Maximum dimension (width or height) for OCR input — keeps memory under control.
-_OCR_MAX_DIMENSION = 960
+# 640px is the sweet spot for Railway: large enough for PaddleOCR accuracy on
+# manga text bubbles, small enough to stay within Railway's 500 MB RAM and
+# finish well under the 60s edge timeout.  (800→640 = ~36% fewer pixels.)
+_OCR_MAX_DIMENSION = 640
+
+# Minimum dimension — PaddleOCR recognition expects ≥32px height.  Tiny crops
+# get upscaled so the recognition model can read them.
+_OCR_MIN_DIMENSION = 32
 
 # Maximum base64 payload size (~10 MB encoded ≈ ~7.5 MB raw image)
 _MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
@@ -369,41 +436,48 @@ def _preprocess_manga_image(img_array):
     """
     Prepare a manga text region for PaddleOCR.
 
-    Pipeline: grayscale → CLAHE → unsharp sharpen.
+    IMPORTANT: PaddleOCR's Japanese recognition model is trained on
+    standard RGB images.  Heavy preprocessing (grayscale conversion,
+    CLAHE, aggressive sharpening) was found to *degrade* accuracy —
+    especially for thin kana strokes and coloured manga panels.
 
-    Thresholding / dilation is intentionally omitted — manga has thin
-    kana strokes that binarisation destroys, causing PaddleOCR to miss
-    entire text lines.  A light sharpen improves edge definition without
-    altering stroke width.
+    Current pipeline (minimal, preserves RGB):
+      1. Auto-detect inverted (light-on-dark) panels and flip them so
+         PaddleOCR always sees dark text on a light background.
+      2. Mild contrast stretch only when the image is very low-contrast.
 
-    Memory-efficient: intermediate arrays are deleted as soon as possible
-    to stay within Railway's 500 MB limit.
+    No grayscale conversion, no CLAHE, no sharpening kernel.
     """
     import cv2
     import numpy as np
 
-    # 1. Grayscale
-    if len(img_array.shape) == 3:
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-        del img_array
-    else:
-        gray = img_array
+    # Ensure 3-channel RGB
+    if len(img_array.shape) == 2:
+        img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
 
-    # 2. CLAHE — adaptive contrast enhancement
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(gray)
-    del gray
+    # Fast luminance check on a small downscaled version to decide inversion
+    small = cv2.resize(img_array, (64, 64), interpolation=cv2.INTER_AREA)
+    gray_small = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+    mean_lum = float(gray_small.mean())
+    del small, gray_small
 
-    # 3. Sharpen — boost edges without altering stroke geometry
-    kernel = np.array([
-        [ 0, -1,  0],
-        [-1,  5, -1],
-        [ 0, -1,  0],
-    ], dtype=np.float32)
-    sharpened = cv2.filter2D(enhanced, -1, kernel)
-    del enhanced
+    # If image is predominantly dark, invert so text is dark-on-light
+    if mean_lum < 100:
+        img_array = cv2.bitwise_not(img_array)
+        log.info("Inverted dark panel (mean luminance %.0f)", mean_lum)
 
-    return sharpened
+    # Mild contrast stretch only if the image is very flat
+    gray_check = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    lo, hi = float(gray_check.min()), float(gray_check.max())
+    del gray_check
+    if (hi - lo) < 80:  # nearly flat histogram
+        # Simple linear stretch to [0, 255]
+        alpha = 255.0 / max(hi - lo, 1)
+        beta = -lo * alpha
+        img_array = cv2.convertScaleAbs(img_array, alpha=alpha, beta=beta)
+        log.info("Applied contrast stretch (range was %.0f–%.0f)", lo, hi)
+
+    return img_array
 
 
 def _run_paddle_ocr(img: Image.Image) -> str:
@@ -414,52 +488,87 @@ def _run_paddle_ocr(img: Image.Image) -> str:
     (bounding_box, (text, confidence)) tuples.  We concatenate all
     recognised text fragments.
 
-    Image is aggressively downscaled so peak memory stays within
-    Railway's 500 MB container limit.
+    Image is capped at _OCR_MAX_DIMENSION (640) and tiny crops are
+    upscaled to _OCR_MIN_DIMENSION so peak memory stays within
+    Railway's 500 MB container limit while preserving OCR accuracy.
+
+    Serialised via _ocr_semaphore so only one OCR inference runs at a
+    time — PaddlePaddle is not thread-safe and concurrent calls cause
+    hangs / OOM on Railway.
     """
     import numpy as np
 
-    # Free lingering garbage before the heavy work
-    gc.collect()
+    t0 = time.monotonic()
 
-    ocr = get_paddle_ocr()
-
-    # Downscale so the longest side ≤ _OCR_MAX_DIMENSION.
-    # This dramatically reduces numpy/CV2 memory and speeds up OCR.
-    max_dim = max(img.width, img.height)
-    if max_dim > _OCR_MAX_DIMENSION:
-        scale = _OCR_MAX_DIMENSION / max_dim
-        img = img.resize(
-            (int(img.width * scale), int(img.height * scale)),
-            Image.LANCZOS,
+    # ── Acquire exclusive OCR slot ────────────────────────────
+    acquired = _ocr_semaphore.acquire(timeout=_QUEUE_TIMEOUT_S)
+    if not acquired:
+        raise TimeoutError(
+            "OCR queue full — another request is still processing. "
+            "Please retry in a few seconds."
         )
-        log.info("Image downscaled to %dx%d for OCR", img.width, img.height)
 
-    img_array = np.array(img)
-    del img  # free PIL image — we only need the numpy array now
+    try:
+        # Free lingering garbage before the heavy work
+        gc.collect()
 
-    img_array = _preprocess_manga_image(img_array)
-    results = ocr.ocr(img_array, cls=False)  # type: ignore[union-attr]
-    del img_array  # free processed array immediately
-    gc.collect()
+        ocr = get_paddle_ocr()
 
-    if not results:
-        return ""
+        log.info("OCR input image: %dx%d", img.width, img.height)
 
-    lines: list[str] = []
-    for page in results:
-        if not page:
-            continue
-        for detection in page:
-            # detection = [bounding_box, (text, score)]
-            if detection and len(detection) >= 2:
-                text_info = detection[1]
-                if isinstance(text_info, (list, tuple)) and len(text_info) >= 1:
-                    text = str(text_info[0]).strip()
-                    if text:
-                        lines.append(text)
+        # ── Resize: cap at _OCR_MAX_DIMENSION, upscale tiny crops ─
+        max_dim = max(img.width, img.height)
+        min_dim = min(img.width, img.height)
 
-    return "".join(lines)
+        if max_dim > _OCR_MAX_DIMENSION:
+            scale = _OCR_MAX_DIMENSION / max_dim
+            new_w = max(int(img.width * scale), 1)
+            new_h = max(int(img.height * scale), 1)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+            log.info("Downscaled to %dx%d for OCR", new_w, new_h)
+        elif min_dim < _OCR_MIN_DIMENSION:
+            # Very small crop — upscale so recognition model can read it
+            scale = _OCR_MIN_DIMENSION / min_dim
+            new_w = int(img.width * scale)
+            new_h = int(img.height * scale)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+            log.info("Upscaled tiny crop to %dx%d for OCR", new_w, new_h)
+
+        img_array = np.array(img, dtype=np.uint8)
+        del img  # free PIL image — we only need the numpy array now
+
+        img_array = _preprocess_manga_image(img_array)
+
+        log.info("Running PaddleOCR on %s array…", img_array.shape)
+        results = ocr.ocr(img_array, cls=False)  # type: ignore[union-attr]
+        del img_array  # free processed array immediately
+
+        elapsed = time.monotonic() - t0
+        log.info("PaddleOCR finished in %.1fs", elapsed)
+        _log_memory()
+
+        if not results:
+            return ""
+
+        lines: list[str] = []
+        for page in results:
+            if not page:
+                continue
+            for detection in page:
+                # detection = [bounding_box, (text, score)]
+                if detection and len(detection) >= 2:
+                    text_info = detection[1]
+                    if isinstance(text_info, (list, tuple)) and len(text_info) >= 1:
+                        text = str(text_info[0]).strip()
+                        if text:
+                            lines.append(text)
+
+        del results
+        return "".join(lines)
+
+    finally:
+        _ocr_semaphore.release()
+        gc.collect()
 
 
 # ─── Health endpoints ─────────────────────────────────────────
@@ -558,19 +667,27 @@ async def ocr(
             )
 
     try:
-        # Run OCR in a thread with a 60-second timeout to prevent hanging
+        # Run OCR in a dedicated single-thread executor with a 50-second
+        # timeout — leaves ~10s headroom before Railway's 60s edge proxy
+        # timeout.  The dedicated executor prevents unbounded thread creation.
         loop = asyncio.get_event_loop()
         text = await asyncio.wait_for(
-            loop.run_in_executor(None, _run_paddle_ocr, img),
-            timeout=60.0,
+            loop.run_in_executor(_ocr_executor, _run_paddle_ocr, img),
+            timeout=50.0,
         )
         del img
         return {"text": text}
     except asyncio.TimeoutError:
-        log.error("OCR timed out after 60s")
+        log.error("OCR async timeout (50s) — likely Railway CPU contention")
         return JSONResponse(
             status_code=504,
-            content={"error": "OCR processing timed out"},
+            content={"error": "OCR processing timed out — image may be too complex. Try a smaller crop."},
+        )
+    except TimeoutError as exc:
+        log.error("OCR semaphore timeout: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"error": "OCR busy — another request is still processing. Please retry in a few seconds."},
         )
     except Exception as exc:
         log.error("OCR failed: %s", exc)
@@ -678,9 +795,27 @@ async def translate(request: Request):
     if not text:
         return {"translatedText": ""}
 
+    import asyncio
+
     try:
-        result = _translate_opus(text)
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_translate_executor, _translate_opus, text),
+            timeout=30.0,
+        )
         return {"translatedText": result}
+    except asyncio.TimeoutError:
+        log.error("Translation async timeout (30s)")
+        return JSONResponse(
+            status_code=504,
+            content={"error": "Translation timed out. Please retry."},
+        )
+    except TimeoutError as exc:
+        log.error("Translation semaphore timeout: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Translation busy — please retry in a few seconds."},
+        )
     except Exception as exc:
         log.error("Translation failed: %s", exc)
         return JSONResponse(

@@ -17,6 +17,15 @@ ENV CUDA_VISIBLE_DEVICES=-1
 ENV TRANSFORMERS_CACHE=/app/models
 ENV HF_HOME=/app/models
 
+# Limit CPU parallelism — Railway containers share CPU cores.
+# Without these, PaddlePaddle/OpenMP spawn many threads that fight for
+# the scheduler, making OCR 3-5× slower and triggering 60s edge timeout.
+ENV OMP_NUM_THREADS=2
+ENV MKL_NUM_THREADS=2
+ENV OPENBLAS_NUM_THREADS=2
+ENV GOTO_NUM_THREADS=2
+ENV FLAGS_num_threads=2
+
 # Create models directory
 RUN mkdir -p /app/models
 
