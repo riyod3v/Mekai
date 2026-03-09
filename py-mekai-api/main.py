@@ -18,13 +18,22 @@
 
 # Fix for PyTorch Windows shared memory issue - MUST be at the very top
 import os
+import sys as _sys
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
-os.environ['TORCH_DISABLE_SHM'] = '1'
+
+# On Windows, import torch BEFORE PaddlePaddle.  PaddlePaddle modifies the
+# DLL search order, which prevents torch's shm.dll from finding its
+# dependencies if torch is imported later (e.g. via albumentations).
+if _sys.platform == 'win32':
+    try:
+        import torch  # noqa: F401 — side-effect: registers DLL dirs
+    except ImportError:
+        pass  # torch not installed; translation features will be unavailable
 
 # ── CPU thread limits ─────────────────────────────────────────
 # Railway containers share CPU cores.  Uncontrolled OpenMP / MKL / PaddlePaddle
 # threading causes severe contention that makes OCR 3-5× slower and triggers
-# the 60-second edge-proxy timeout.  Pinning to 2 threads keeps PaddleOCR fast
+# the 60-second edge-proxy timeout.  Pinning to 1 thread keeps PaddleOCR fast
 # without competing for the scheduler.
 os.environ.setdefault('OMP_NUM_THREADS', '2')
 os.environ.setdefault('MKL_NUM_THREADS', '2')
@@ -37,6 +46,7 @@ import base64
 import gc
 import io
 import logging
+import re as _re
 import sys
 import threading
 import time
@@ -109,15 +119,19 @@ def get_paddle_ocr():
     """
     Return the cached PaddleOCR instance, creating it on first call.
 
-    Configuration tuned for manga on Railway (CPU-only, limited RAM):
+    Configuration tuned for manga on Railway (CPU-only, 512 MB RAM):
       - lang="japan"                → Japanese recognition model
-      - use_angle_cls=False         → skip angle classification (speed)
+      - use_angle_cls=True          → classify text angle (vertical manga)
       - use_gpu=False               → CPU-only (Railway has no GPU)
       - enable_mkldnn=True          → Intel MKL-DNN acceleration
       - cpu_threads=2               → match OMP_NUM_THREADS env
-      - det_limit_side_len=640      → cap detection input size
-      - det_db_score_mode="fast"    → faster text-box scoring
+      - det_limit_side_len=512      → cap detection input size
+      - det_db_box_thresh=0.2       → lower threshold catches more manga text
       - show_log=False              → reduce noise
+
+    OCR is called with det=False (recognition-only) since the frontend
+    already crops speech bubbles.  Detection params are kept for the
+    --install-ocr pre-download and potential future use.
     """
     global _paddle_ocr
     if _paddle_ocr is None:
@@ -127,19 +141,16 @@ def get_paddle_ocr():
         try:
             _paddle_ocr = PaddleOCR(
                 lang="japan",
-                use_angle_cls=False,
+                use_angle_cls=True,
                 use_gpu=False,
                 show_log=False,
-                det_model_dir=None,   # auto-download default det model
-                rec_model_dir=None,   # auto-download default japan rec model
-                cls_model_dir=None,   # auto-download default cls model
                 det_db_score_mode="fast",
-                det_db_box_thresh=0.3,
-                det_limit_side_len=640,   # cap detection resize
+                det_db_box_thresh=0.2,
+                det_limit_side_len=512,
                 rec_batch_num=1,
-                enable_mkldnn=True,       # Intel MKL-DNN for CPU speed
-                cpu_threads=2,            # match thread-limit env vars
-                use_mp=False,             # no multiprocessing
+                enable_mkldnn=False,
+                cpu_threads=2,
+                use_mp=False,
             )
             log.info("PaddleOCR ready.")
             _log_memory()
@@ -205,8 +216,8 @@ def _translate_opus(text: str) -> str:
         with torch.no_grad():
             output = model.generate(
                 **inputs,
-                max_length=512,
-                num_beams=4,
+                max_length=256,
+                num_beams=2,
                 early_stopping=True,
             )
         result = tokenizer.decode(output[0], skip_special_tokens=True)
@@ -431,67 +442,47 @@ _MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
 
 def _preprocess_manga_image(img_array):
     """
-    Prepare a manga text region for PaddleOCR.
+    Minimal preprocessing for manga speech-bubble crops.
 
-    IMPORTANT: PaddleOCR's Japanese recognition model is trained on
-    standard RGB images.  Heavy preprocessing (grayscale conversion,
-    CLAHE, aggressive sharpening) was found to *degrade* accuracy —
-    especially for thin kana strokes and coloured manga panels.
+    PaddleOCR's Japanese recognition model is trained on standard RGB
+    images.  Heavy preprocessing (grayscale, CLAHE, sharpening) degrades
+    accuracy — especially thin kana strokes.  We only:
+      1. Ensure 3-channel RGB.
+      2. Auto-detect inverted (light-on-dark) panels and flip them.
 
-    Current pipeline (minimal, preserves RGB):
-      1. Auto-detect inverted (light-on-dark) panels and flip them so
-         PaddleOCR always sees dark text on a light background.
-      2. Mild contrast stretch only when the image is very low-contrast.
-
-    No grayscale conversion, no CLAHE, no sharpening kernel.
+    No grayscale conversion, no contrast stretch, no sharpening.
+    Minimises numpy copies to keep RAM under Railway's 512 MB limit.
     """
     import cv2
-    import numpy as np
 
     # Ensure 3-channel RGB
     if len(img_array.shape) == 2:
         img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
 
-    # Fast luminance check on a small downscaled version to decide inversion
-    small = cv2.resize(img_array, (64, 64), interpolation=cv2.INTER_AREA)
-    gray_small = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
-    mean_lum = float(gray_small.mean())
-    del small, gray_small
+    # Fast luminance check on a tiny downscale to decide inversion
+    small = cv2.resize(img_array, (32, 32), interpolation=cv2.INTER_AREA)
+    mean_lum = float(cv2.cvtColor(small, cv2.COLOR_RGB2GRAY).mean())
+    del small
 
     # If image is predominantly dark, invert so text is dark-on-light
     if mean_lum < 100:
         img_array = cv2.bitwise_not(img_array)
         log.info("Inverted dark panel (mean luminance %.0f)", mean_lum)
 
-    # Mild contrast stretch only if the image is very flat
-    gray_check = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    lo, hi = float(gray_check.min()), float(gray_check.max())
-    del gray_check
-    if (hi - lo) < 80:  # nearly flat histogram
-        # Simple linear stretch to [0, 255]
-        alpha = 255.0 / max(hi - lo, 1)
-        beta = -lo * alpha
-        img_array = cv2.convertScaleAbs(img_array, alpha=alpha, beta=beta)
-        log.info("Applied contrast stretch (range was %.0f–%.0f)", lo, hi)
-
     return img_array
 
 
 def _run_paddle_ocr(img: Image.Image) -> str:
     """
-    Run PaddleOCR on a PIL Image and return concatenated text.
+    Run PaddleOCR on a pre-cropped speech bubble (detection + recognition).
 
-    PaddleOCR returns a list of pages, each containing a list of
-    (bounding_box, (text, confidence)) tuples.  We concatenate all
-    recognised text fragments.
+    Detection finds text regions within the bubble, then recognition reads
+    each region.  Fragments are sorted in **manga reading order** (right-to-
+    left columns, top-to-bottom within each column) before joining.
 
-    Image is capped at _OCR_MAX_DIMENSION (640) and tiny crops are
-    upscaled to _OCR_MIN_DIMENSION so peak memory stays within
-    Railway's 500 MB container limit while preserving OCR accuracy.
-
-    Serialised via _ocr_semaphore so only one OCR inference runs at a
-    time — PaddlePaddle is not thread-safe and concurrent calls cause
-    hangs / OOM on Railway.
+    Image is capped at _OCR_MAX_DIMENSION (512px) and tiny crops are
+    upscaled to _OCR_MIN_DIMENSION (32px).  Serialised via
+    _ocr_semaphore so only one inference runs at a time.
     """
     import numpy as np
 
@@ -531,13 +522,17 @@ def _run_paddle_ocr(img: Image.Image) -> str:
             img = img.resize((new_w, new_h), Image.LANCZOS)
             log.info("Upscaled tiny crop to %dx%d for OCR", new_w, new_h)
 
+        img_w = img.width  # save for reading-order sort later
         img_array = np.array(img, dtype=np.uint8)
         del img  # free PIL image — we only need the numpy array now
 
         img_array = _preprocess_manga_image(img_array)
 
         log.info("Running PaddleOCR on %s array…", img_array.shape)
-        results = ocr.ocr(img_array, cls=False)  # type: ignore[union-attr]
+        results = ocr.ocr(
+            img_array,
+            cls=True,
+        )  # type: ignore[union-attr]
         del img_array  # free processed array immediately
 
         elapsed = time.monotonic() - t0
@@ -547,21 +542,70 @@ def _run_paddle_ocr(img: Image.Image) -> str:
         if not results:
             return ""
 
-        lines: list[str] = []
+        # ── Extract text segments with positions ─────────────────
+        # det=True format:  [[[bbox, (text, confidence)], ...]]
+        #   bbox = [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
+        # We collect (center_x, center_y, text) for reading-order sort.
+        _MIN_CONFIDENCE = 0.3  # drop noisy low-confidence detections
+        segments: list[tuple[float, float, str]] = []
+
         for page in results:
             if not page:
                 continue
-            for detection in page:
-                # detection = [bounding_box, (text, score)]
-                if detection and len(detection) >= 2:
-                    text_info = detection[1]
-                    if isinstance(text_info, (list, tuple)) and len(text_info) >= 1:
+            for item in page:
+                if not item or len(item) < 2:
+                    continue
+                bbox_or_text = item[0]
+                text_info = item[1]
+
+                if isinstance(bbox_or_text, list) and bbox_or_text and isinstance(bbox_or_text[0], (list, tuple)):
+                    # det=True: bbox_or_text is [[x,y], ...], text_info is (text, score)
+                    if isinstance(text_info, (list, tuple)) and len(text_info) >= 2:
+                        score = float(text_info[1])
+                        if score < _MIN_CONFIDENCE:
+                            continue
                         text = str(text_info[0]).strip()
-                        if text:
-                            lines.append(text)
+                    else:
+                        text = str(text_info).strip()
+                    if not text:
+                        continue
+                    cx = sum(p[0] for p in bbox_or_text) / len(bbox_or_text)
+                    cy = sum(p[1] for p in bbox_or_text) / len(bbox_or_text)
+                    segments.append((cx, cy, text))
+                else:
+                    # det=False fallback: item is (text, score)
+                    text = str(bbox_or_text).strip()
+                    if text:
+                        segments.append((0.0, float(len(segments)), text))
 
         del results
-        return "".join(lines)
+
+        if not segments:
+            return ""
+
+        # ── Sort in manga reading order ──────────────────────────
+        # Manga reads right-to-left columns, top-to-bottom within.
+        # Group detections into columns: segments whose X centres are
+        # within 20% of image width are treated as the same column.
+        if len(segments) > 1:
+            segments.sort(key=lambda s: -s[0])  # right-to-left first
+            col_thresh = max(img_w * 0.20, 15)  # pixels
+            columns: list[list[tuple[float, float, str]]] = [[segments[0]]]
+            for seg in segments[1:]:
+                if abs(seg[0] - columns[-1][0][0]) < col_thresh:
+                    columns[-1].append(seg)
+                else:
+                    columns.append([seg])
+            # Within each column, sort top-to-bottom
+            ordered: list[str] = []
+            for col in columns:
+                col.sort(key=lambda s: s[1])
+                ordered.extend(s[2] for s in col)
+        else:
+            ordered = [segments[0][2]]
+
+        log.info("OCR segments (%d): %s", len(ordered), ordered)
+        return "".join(ordered)
 
     finally:
         _ocr_semaphore.release()

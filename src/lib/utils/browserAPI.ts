@@ -5,6 +5,14 @@ import { toRomaji } from '@/lib/translate/romaji';
 import { isMangaOcrAvailable, localMangaOcr } from '@/lib/api/manga-ocr-py-API';
 import type { TranslationProvider } from '@/lib/translate/translate';
 
+// ─── OCR request lock ────────────────────────────────────────
+// Prevents concurrent OCR requests from flooding Railway's 512 MB container.
+// Only one OCR+translate pipeline may run at a time; subsequent calls are
+// rejected immediately so the UI can show "busy" feedback.
+let _ocrRunning = false;
+const _OCR_COOLDOWN_MS = 1_000;
+let _lastOcrFinished = 0;
+
 // ─── Public types ─────────────────────────────────────────────
 
 export type OcrTranslateResult = {
@@ -34,10 +42,26 @@ export async function ocrAndTranslate(
   bbox: BBox,
 ): Promise<OcrTranslateResult> {
   const ocrSource: OcrTranslateResult['ocrSource'] = 'manga-ocr';
+  const emptyResult: OcrTranslateResult = {
+    ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api',
+  };
+
+  // ── Request lock: reject if another OCR is already in flight ──
+  if (_ocrRunning) {
+    console.warn('[mekai] OCR request skipped — another is still running');
+    return emptyResult;
+  }
+
+  // ── Cooldown: enforce minimum gap between requests ──
+  const sinceLastOcr = Date.now() - _lastOcrFinished;
+  if (sinceLastOcr < _OCR_COOLDOWN_MS) {
+    console.warn('[mekai] OCR request skipped — cooldown active');
+    return emptyResult;
+  }
 
   // Pre-flight: skip OCR entirely if region has no detectable ink
   if (!hasInkContent(imgEl, bbox)) {
-    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api' };
+    return emptyResult;
   }
 
   // manga-ocr via py-mekai-api server (local in dev, Railway in prod)
@@ -51,24 +75,31 @@ export async function ocrAndTranslate(
         : 'OCR service is unreachable. Check that VITE_OCR_API_URL is set and Railway is running.',
     );
   }
-  const base64 = cropToDataUrl(imgEl, bbox);
-  const ocrText = await localMangaOcr(base64);
 
-  if (!ocrText) {
-    return { ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api' };
-  }
-
-  let translated = '';
-  let translationProvider: OcrTranslateResult['translationProvider'] = 'py-mekai-api';
+  _ocrRunning = true;
   try {
-    const result = await translateJapaneseToEnglishWithProvider(ocrText);
-    translated = result.translated;
-    translationProvider = result.provider;
-  } catch {
-    // Translation is best-effort; surface OCR text even if translation fails
+    const base64 = cropToDataUrl(imgEl, bbox);
+    const ocrText = await localMangaOcr(base64);
+
+    if (!ocrText) {
+      return emptyResult;
+    }
+
+    let translated = '';
+    let translationProvider: OcrTranslateResult['translationProvider'] = 'py-mekai-api';
+    try {
+      const result = await translateJapaneseToEnglishWithProvider(ocrText);
+      translated = result.translated;
+      translationProvider = result.provider;
+    } catch {
+      // Translation is best-effort; surface OCR text even if translation fails
+    }
+
+    const romaji = toRomaji(ocrText);
+
+    return { ocrText, translated, romaji, ocrSource, translationProvider };
+  } finally {
+    _ocrRunning = false;
+    _lastOcrFinished = Date.now();
   }
-
-  const romaji = toRomaji(ocrText);
-
-  return { ocrText, translated, romaji, ocrSource, translationProvider };
 }

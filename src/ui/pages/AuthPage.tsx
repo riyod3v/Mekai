@@ -330,6 +330,33 @@ export default function AuthPage() {
               {submitting && <LoadingSpinner size="sm" />}
               {tab === 'login' ? 'Sign In' : 'Create Account'}
             </button>
+
+            {/* Toggle link */}
+            <p className="text-center text-sm text-slate-600 dark:text-slate-400 mt-4">
+              {tab === 'login' ? (
+                <>
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => switchTab('signup')}
+                    className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+                  >
+                    Register
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => switchTab('login')}
+                    className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+                  >
+                    Login
+                  </button>
+                </>
+              )}
+            </p>
           </form>
         </div>
       </div>

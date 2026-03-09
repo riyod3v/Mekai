@@ -1,6 +1,6 @@
 import { useThemeContext } from "@/context/ThemeContext";
 import { Link } from "react-router-dom";
-import { Sun, Moon, BookOpen, Languages, Vault, Users } from "lucide-react";
+import { Sun, Moon, BookOpen, Languages, Vault, Users, MousePointerClick, Sparkles, Save } from "lucide-react";
 import logoDark from "@/assets/IMG/branding/mekai-logo-dark.svg";
 import logoLight from "@/assets/IMG/branding/mekai-logo-light.svg";
 
@@ -28,6 +28,30 @@ const features = [
     title: "Translator Workflow",
     description:
       "Dedicated dashboard for translators to upload chapters and manage translations efficiently.",
+  },
+];
+
+const tutorialSteps = [
+  {
+    icon: MousePointerClick,
+    step: "1",
+    title: "Select a Speech Bubble",
+    description:
+      "Click and drag to crop any speech bubble or text panel in the manga reader. The selection tool makes it easy to capture exactly what you want to translate.",
+  },
+  {
+    icon: Sparkles,
+    step: "2",
+    title: "OCR-Translation",
+    description:
+      "Once you release, OCR automatically detects the Japanese text and translates it to English. No need to switch apps or copy-paste — everything happens instantly.",
+  },
+  {
+    icon: Save,
+    step: "3",
+    title: "Save to Word Vault",
+    description:
+      "Found an interesting word or phrase? Click the save button to add it to your personal Word Vault. Build your vocabulary as you read and review it anytime.",
   },
 ];
 
@@ -90,7 +114,7 @@ export default function LandingPage() {
               Get Started
             </Link>
             <a
-              href="#features"
+              href="#LearnHowToUse"
               className="px-6 py-3 rounded-xl text-base font-semibold border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
             >
               Learn More
@@ -99,9 +123,9 @@ export default function LandingPage() {
         </section>
 
         {/* Features */}
-        <section id="features" className="max-w-6xl mx-auto px-6 pb-24">
+        <section className="max-w-6xl mx-auto px-6 pb-24">
           <h2 className="text-3xl font-bold text-center mb-12 tracking-tight">
-            How It Works
+            Features
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {features.map(({ icon: Icon, title, description }) => (
@@ -122,13 +146,40 @@ export default function LandingPage() {
             ))}
           </div>
         </section>
+
+        {/* How to Use Tutorial */}
+        <section id="LearnHowToUse" className="max-w-6xl mx-auto px-6 pb-24">
+          <h2 className="text-3xl font-bold text-center mb-12 tracking-tight">
+            How to Use
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {tutorialSteps.map(({ icon: Icon, step, title, description }) => (
+              <div
+                key={step}
+                className="relative p-6 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/10 dark:hover:shadow-indigo-500/20 hover:-translate-y-1 flex flex-col gap-4"
+              >
+                <div className="absolute -top-3 -left-3 w-8 h-8 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                  {step}
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                  <Icon size={20} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-base mb-1">{title}</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </main>
 
       {/* Footer */}
       <footer className="border-t border-black/10 dark:border-white/10">
-        <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-slate-500 dark:text-slate-400">
+        <div className="max-w-6xl mx-auto px-6 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
           <span>© {new Date().getFullYear()} Mekai. All rights reserved.</span>
-          <span>Built for manga readers and language learners.</span>
         </div>
       </footer>
     </div>

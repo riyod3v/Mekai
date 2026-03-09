@@ -31,6 +31,8 @@ uv venv --python 3.11 .venv
 source .venv/bin/activate
 # Windows PowerShell:
 .venv\Scripts\Activate.ps1
+# or
+.venv\Scripts\activate
 ```
 
 ### 2 — Install dependencies
