@@ -2,14 +2,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { logger } from '@/lib/utils/logger';
-import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
   Scan, History, X, List, Square, Menu,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { useNotification } from '@/context/NotificationContext';
-import clsx from 'clsx';
 
 import { fetchChapterById, fetchChaptersByManga } from '@/services/chapters';
 import { fetchMangaById } from '@/services/manga';
@@ -98,6 +96,22 @@ function publishedRowToOverlay(row: ChapterTranslationRow): Overlay {
     romaji: row.romaji,
     source: 'published',
   };
+}
+
+/**
+ * Return true when two fractional RegionBoxes overlap by more than
+ * `threshold` (0–1) of the smaller region's area.  Used to prevent
+ * OCR from firing on a bubble that already has a published translation.
+ */
+function regionsOverlap(a: RegionBox, b: RegionBox, threshold = 0.3): boolean {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.w, b.x + b.w);
+  const y2 = Math.min(a.y + a.h, b.y + b.h);
+  if (x2 <= x1 || y2 <= y1) return false;
+  const intersection = (x2 - x1) * (y2 - y1);
+  const smaller = Math.min(a.w * a.h, b.w * b.h);
+  return smaller > 0 && intersection / smaller >= threshold;
 }
 
 // ─── Per-page sub-component ───────────────────────────────────
@@ -230,7 +244,7 @@ export default function MangaReaderPage() {
   const [extractError, setExtractError] = useState<string | null>(null);
   const prevUrls = useRef<string[]>([]);
 
-  // ── Reading mode (persisted) ──────────────────────────────
+  // ── Reading mode ──────────────────────────────
   const [readingMode, setReadingMode] = useState<ReadingMode>(() =>
     (localStorage.getItem('mekai-reading-mode') as ReadingMode) ?? 'scroll'
   );
@@ -469,6 +483,16 @@ export default function MangaReaderPage() {
   async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
     if (!chapter) return;
 
+    // Skip OCR when the selected region overlaps an existing translation
+    // (published or user-created).  This prevents duplicate overlays and
+    // preserves the translator's official translation.
+    const pageOverlays = mergedOverlays.filter((o) => o.pageIndex === pageIndex);
+    const hit = pageOverlays.find((o) => regionsOverlap(sel.region, o.region));
+    if (hit) {
+      notify.info('This bubble already has a translation.');
+      return;
+    }
+
     setOcr({ phase: 'running', pageIndex, selection: sel, error: null });
 
     try {
@@ -524,7 +548,7 @@ export default function MangaReaderPage() {
       );
     }
   },
-  [chapter, addHistory, canPublishTranslations, queryClient, chapterId]
+  [chapter, addHistory, canPublishTranslations, queryClient, chapterId, mergedOverlays, notify]
 );
 
   // ── Image ref handler ─────────────────────────────────────────
