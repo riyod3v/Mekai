@@ -21,6 +21,16 @@ export function ProfileDropdown({ onSignOut }: Props) {
     getMyProfile().then(setProfile).catch(() => null);
   }, []);
 
+  // Keep avatar/username in sync when updated from the Settings page
+  useEffect(() => {
+    function onProfileUpdated(e: Event) {
+      const updated = (e as CustomEvent<typeof profile>).detail;
+      if (updated) setProfile(updated);
+    }
+    window.addEventListener('profile-updated', onProfileUpdated);
+    return () => window.removeEventListener('profile-updated', onProfileUpdated);
+  }, []);
+
   // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {

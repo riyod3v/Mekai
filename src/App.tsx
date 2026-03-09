@@ -17,7 +17,7 @@ import MangaEntryPage from '@/ui/pages/MangaEntryPage';
 import MangaReaderPage from '@/ui/pages/MangaReaderPage';
 import WordVaultPage from '@/ui/pages/WordVaultPage';
 import LandingPage from '@/ui/pages/LandingPage';
-import SettingsPage from '@/ui/pages/Settings';
+import SettingsPage from '@/ui/pages/ProfileSettings';
 
 const queryClient = new QueryClient({
   defaultOptions: {

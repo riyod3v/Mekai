@@ -126,6 +126,7 @@ export default function SettingsPage() {
     try {
       const updated = await updateMyProfile({ username });
       setProfile(updated);
+      window.dispatchEvent(new CustomEvent('profile-updated', { detail: updated }));
       notify.success('Username updated!');
     } catch (err: unknown) {
       notify.error(err instanceof Error ? err.message : 'Failed to save.');
@@ -155,8 +156,11 @@ export default function SettingsPage() {
         .upload(path, file, { upsert: true });
       if (uploadErr) throw new Error(uploadErr.message);
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-      const updated = await updateMyProfile({ avatar_url: publicUrl });
+      // Cache-bust so the browser fetches the new image even though the path is the same
+      const bustUrl = `${publicUrl}?t=${Date.now()}`;
+      const updated = await updateMyProfile({ avatar_url: bustUrl });
       setProfile(updated);
+      window.dispatchEvent(new CustomEvent('profile-updated', { detail: updated }));
       notify.success('Avatar updated!');
     } catch (err: unknown) {
       notify.error(err instanceof Error ? err.message : 'Upload failed.');
@@ -171,6 +175,7 @@ export default function SettingsPage() {
     try {
       const updated = await updateMyProfile({ avatar_url: null });
       setProfile(updated);
+      window.dispatchEvent(new CustomEvent('profile-updated', { detail: updated }));
       notify.success('Avatar removed.');
     } catch (err: unknown) {
       notify.error(err instanceof Error ? err.message : 'Failed to remove avatar.');
