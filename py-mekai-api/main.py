@@ -123,15 +123,16 @@ def get_paddle_ocr():
       - lang="japan"                → Japanese recognition model
       - use_angle_cls=True          → classify text angle (vertical manga)
       - use_gpu=False               → CPU-only (Railway has no GPU)
-      - enable_mkldnn=True          → Intel MKL-DNN acceleration
+      - enable_mkldnn=True          → Intel MKL-DNN acceleration on CPU
       - cpu_threads=2               → match OMP_NUM_THREADS env
       - det_limit_side_len=512      → cap detection input size
       - det_db_box_thresh=0.2       → lower threshold catches more manga text
+      - det_db_unclip_ratio=1.8     → wider text regions for tight kana spacing
+      - use_space_char=False         → no false spaces in Japanese output
       - show_log=False              → reduce noise
 
-    OCR is called with det=False (recognition-only) since the frontend
-    already crops speech bubbles.  Detection params are kept for the
-    --install-ocr pre-download and potential future use.
+    The frontend already crops speech bubbles, but detection is still used
+    to find individual text lines within each bubble.
     """
     global _paddle_ocr
     if _paddle_ocr is None:
@@ -144,11 +145,16 @@ def get_paddle_ocr():
                 use_angle_cls=True,
                 use_gpu=False,
                 show_log=False,
+                # ── Detection tuning ──
                 det_db_score_mode="fast",
                 det_db_box_thresh=0.2,
+                det_db_unclip_ratio=1.8,   # wider unclip for tight manga text / small kana
                 det_limit_side_len=512,
+                # ── Recognition tuning ──
                 rec_batch_num=1,
-                enable_mkldnn=False,
+                use_space_char=False,       # Japanese has no inter-word spaces
+                # ── Runtime ──
+                enable_mkldnn=True,         # Intel MKL-DNN acceleration on CPU
                 cpu_threads=2,
                 use_mp=False,
             )
@@ -226,7 +232,6 @@ def _translate_opus(text: str) -> str:
         return result
     finally:
         _translate_semaphore.release()
-        gc.collect()
 
 # ─── One-time model installers (CLI) ─────────────────────────
 
@@ -299,14 +304,11 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("PaddleOCR preload failed: %s", exc)
 
-    # Preload translation model
-    try:
-        log.info("Preloading translation model...")
-        get_opus_translator()
-    except Exception as exc:
-        log.warning("Translation preload failed: %s", exc)
+    # Translation model loads lazily on first /translate request.
+    # This shaves ~10-15s off cold start and ~200 MB off initial RSS,
+    # leaving more headroom for OCR on Railway's 512 MB containers.
+    log.info("Translation model will load on first /translate request.")
 
-    # Report memory after all models are loaded
     _log_memory()
     gc.collect()
     log.info("Startup complete — ready to serve requests.")
@@ -449,8 +451,9 @@ def _preprocess_manga_image(img_array):
     accuracy — especially thin kana strokes.  We only:
       1. Ensure 3-channel RGB.
       2. Auto-detect inverted (light-on-dark) panels and flip them.
+      3. Light contrast stretch for washed-out / low-contrast panels.
 
-    No grayscale conversion, no contrast stretch, no sharpening.
+    No grayscale conversion, no heavy filtering.
     Minimises numpy copies to keep RAM under Railway's 512 MB limit.
     """
     import cv2
@@ -461,13 +464,22 @@ def _preprocess_manga_image(img_array):
 
     # Fast luminance check on a tiny downscale to decide inversion
     small = cv2.resize(img_array, (32, 32), interpolation=cv2.INTER_AREA)
-    mean_lum = float(cv2.cvtColor(small, cv2.COLOR_RGB2GRAY).mean())
-    del small
+    gray_small = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+    mean_lum = float(gray_small.mean())
+    std_lum = float(gray_small.std())
+    del small, gray_small
 
     # If image is predominantly dark, invert so text is dark-on-light
     if mean_lum < 100:
         img_array = cv2.bitwise_not(img_array)
         log.info("Inverted dark panel (mean luminance %.0f)", mean_lum)
+
+    # Light contrast stretch for low-contrast panels (e.g. gray text on
+    # off-white background).  Only applied when std deviation is very low,
+    # meaning the image lacks dynamic range.  Uses convertScaleAbs which
+    # is fast and in-place-friendly.
+    elif std_lum < 35:
+        img_array = cv2.convertScaleAbs(img_array, alpha=1.3, beta=10)
 
     return img_array
 
@@ -497,9 +509,6 @@ def _run_paddle_ocr(img: Image.Image) -> str:
         )
 
     try:
-        # Free lingering garbage before the heavy work
-        gc.collect()
-
         ocr = get_paddle_ocr()
 
         log.info("OCR input image: %dx%d", img.width, img.height)
@@ -609,7 +618,6 @@ def _run_paddle_ocr(img: Image.Image) -> str:
 
     finally:
         _ocr_semaphore.release()
-        gc.collect()
 
 
 # ─── Health endpoints ─────────────────────────────────────────
@@ -736,8 +744,6 @@ async def ocr(
             status_code=500,
             content={"error": str(exc)},
         )
-    finally:
-        gc.collect()
 
 @app.post("/ocr/debug")
 async def ocr_debug(file: UploadFile = File(...)):

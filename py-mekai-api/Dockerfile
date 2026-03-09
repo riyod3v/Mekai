@@ -39,21 +39,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 
-# Try to pre-download models, but don't fail the build if it doesn't work
+# Pre-download models at build time so they're baked into the image.
+# Models load from disk during FastAPI lifespan — no redundant processes.
 RUN python main.py --install-ocr || echo "OCR model download failed - will download on first request"
 RUN python main.py --install-translate || echo "Translation model download failed - will download on first request"
 
-# Create a startup script that ensures models are downloaded
-RUN echo '#!/bin/bash\n\
-echo "Starting Mekai API..."\n\
-echo "Checking models..."\n\
-python -c "import main; main.get_paddle_ocr()" 2>/dev/null || echo "OCR models will be downloaded on first use"\n\
-python -c "import main; main.get_opus_translator()" 2>/dev/null || echo "Translation models will be downloaded on first use"\n\
-echo "Starting server..."\n\
-exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-5100} --workers 1 --log-level info\n\
-' > /app/start.sh && chmod +x /app/start.sh
-
 EXPOSE 5100
 
-# Use the startup script
-CMD ["/app/start.sh"]
+# Start uvicorn directly — models are preloaded via FastAPI lifespan events,
+# no redundant startup script needed.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-5100} --workers 1 --log-level info"]
