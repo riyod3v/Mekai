@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import type { Swiper as SwiperType } from 'swiper';
+import 'swiper/css';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { logger } from '@/lib/utils/logger';
@@ -260,7 +263,22 @@ export default function MangaReaderPage() {
     });
     setCurrentPage(0);
     setOcr(null);
+    setUiVisible(true);
+    swiperRef.current = null;
+    setSwiperInstance(null);
   }
+
+  // ── Swiper + UI-overlay state ───────────────────────────────
+  const [swiperInstance, setSwiperInstance] = useState<SwiperType | null>(null);
+  const swiperRef = useRef<SwiperType | null>(null);
+  const [uiVisible, setUiVisible] = useState(true);
+
+  // Sync currentPage → Swiper for external navigation (progress restore, history highlight)
+  useEffect(() => {
+    if (swiperRef.current && swiperRef.current.realIndex !== currentPage) {
+      swiperRef.current.slideTo(currentPage);
+    }
+  }, [currentPage, swiperInstance]);
 
   // ── OCR + history state ────────────────────────────────────
   const [selectionMode, setSelectionMode] = useState(false);
@@ -639,10 +657,10 @@ export default function MangaReaderPage() {
       // Don't hijack when typing in an input / textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        setCurrentPage((p) => Math.min(p + 1, images.length - 1));
+        swiperRef.current?.slideNext();
         setOcr(null);
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        setCurrentPage((p) => Math.max(p - 1, 0));
+        swiperRef.current?.slidePrev();
         setOcr(null);
       }
     }
@@ -704,7 +722,7 @@ export default function MangaReaderPage() {
   return (
   <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
     {/* ── Top bar with hamburger menu and centered title ────────── */}
-    <header className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-white/10 shadow-sm">
+    <header className={`sticky top-0 z-50 flex items-center justify-between px-4 py-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-white/10 shadow-sm transition-transform duration-300 ${readingMode === 'page' && !uiVisible ? '-translate-y-full' : 'translate-y-0'}`}>
       
       {/* Left: Back button */}
       <div className="flex items-center gap-2">
@@ -895,50 +913,95 @@ export default function MangaReaderPage() {
               </div>
             </div>
           ) : (
-            /* ── Page mode: one page at a time ── */
-            <div className="w-full max-w-3xl mx-auto flex flex-col items-center gap-4 py-4">
-              {/* Single page */}
-              <ReaderPageItem
-                key={images[currentPage]}
-                src={images[currentPage]}
-                pageIndex={currentPage}
-                loading="eager"
-                selectionActive={selectionMode}
-                onSelect={handlePageSelect}
-                ocrState={ocr?.pageIndex === currentPage ? ocr : null}
-                onDismissOcr={() => setOcr(null)}
-                overlays={mergedOverlays.filter((o) => o.pageIndex === currentPage)}
-                highlightId={highlightId}
-                onDismissOverlay={handleDismissOverlay}
-                onSaveToVault={bookmarkHandler}
-                isChapterOwner={isChapterOwner}
-                readOnly={isReadOnlyViewer}
-                onImageRef={handleImageRef}
-              />
+            /* ── Page mode: one page at a time (Swiper) ── */
+            <div className="w-full max-w-3xl mx-auto flex flex-col items-center py-4">
+              {/* Swiper page viewer — tap to toggle UI overlay */}
+              <Swiper
+                dir="rtl"
+                initialSlide={currentPage}
+                allowTouchMove={!selectionMode}
+                onSwiper={(s) => {
+                  setSwiperInstance(s);
+                  swiperRef.current = s;
+                }}
+                onSlideChange={(s) => {
+                  setCurrentPage(s.realIndex);
+                  setOcr(null);
+                }}
+                onClick={() => {
+                  if (!selectionMode) setUiVisible((v) => !v);
+                }}
+                className="w-full"
+              >
+                {images.map((src, i) => (
+                  <SwiperSlide key={src}>
+                    <ReaderPageItem
+                      src={src}
+                      pageIndex={i}
+                      loading={Math.abs(i - currentPage) <= 1 ? 'eager' : 'lazy'}
+                      selectionActive={selectionMode}
+                      onSelect={handlePageSelect}
+                      ocrState={ocr?.pageIndex === i ? ocr : null}
+                      onDismissOcr={() => setOcr(null)}
+                      overlays={mergedOverlays.filter((o) => o.pageIndex === i)}
+                      highlightId={highlightId}
+                      onDismissOverlay={handleDismissOverlay}
+                      onSaveToVault={bookmarkHandler}
+                      isChapterOwner={isChapterOwner}
+                      readOnly={isReadOnlyViewer}
+                      onImageRef={handleImageRef}
+                    />
+                  </SwiperSlide>
+                ))}
+              </Swiper>
 
-              {/* Page navigation bar */}
-              <div className="flex items-center gap-3 py-2">
-                <button
-                  onClick={() => { setCurrentPage((p) => Math.max(p - 1, 0)); setOcr(null); }}
-                  disabled={currentPage === 0}
-                  className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Prev
-                </button>
+              {/* Bottom UI bar — page scrubber + Prev/Next — auto-hides on tap */}
+              <div
+                className={`w-full flex flex-col items-center gap-2 px-4 py-3 transition-all duration-300 ${
+                  uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+                }`}
+              >
+                {/* Range scrubber — RTL to match manga reading direction */}
+                {images.length > 1 && (
+                  <input
+                    type="range"
+                    min={0}
+                    max={images.length - 1}
+                    value={currentPage}
+                    onChange={(e) => {
+                      const idx = Number(e.target.value);
+                      swiperInstance?.slideTo(idx);
+                    }}
+                    className="w-full max-w-xs accent-indigo-500"
+                    style={{ direction: 'rtl' }}
+                    aria-label="Jump to page"
+                  />
+                )}
 
-                <span className="text-sm text-gray-400 tabular-nums min-w-[5rem] text-center">
-                  {currentPage + 1} / {images.length}
-                </span>
+                {/* Prev / counter / Next */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { swiperInstance?.slidePrev(); setOcr(null); }}
+                    disabled={currentPage === 0}
+                    className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Prev
+                  </button>
 
-                <button
-                  onClick={() => { setCurrentPage((p) => Math.min(p + 1, images.length - 1)); setOcr(null); }}
-                  disabled={currentPage === images.length - 1}
-                  className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                  <span className="text-sm text-gray-400 tabular-nums min-w-[5rem] text-center">
+                    {currentPage + 1} / {images.length}
+                  </span>
+
+                  <button
+                    onClick={() => { swiperInstance?.slideNext(); setOcr(null); }}
+                    disabled={currentPage === images.length - 1}
+                    className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {/* End-of-chapter footer — only shown on last page */}

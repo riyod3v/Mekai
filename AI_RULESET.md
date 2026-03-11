@@ -44,6 +44,7 @@ Frontend:
 - Tailwind CSS v4
 - React Router v7
 - TanStack Query v5
+- Swiper.js (page-mode reader carousel + RTL scrubber)
 
 Backend:
 
