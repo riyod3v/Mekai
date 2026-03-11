@@ -6,9 +6,13 @@ The project is Mekai, a manga reader + translator platform.
 
 Architecture stack:
 
-- Frontend: Next.js (App Router) + TypeScript
-- Backend: Supabase (Postgres + Storage + Auth)
-- Deployment: Vercel
+- Frontend: React 19 + Vite 7 + TypeScript
+- Styling: Tailwind CSS v4
+- Data fetching: TanStack Query v5
+- Backend: Supabase (Postgres + Storage + Auth + Realtime)
+- OCR/Translation: Python FastAPI microservice (PaddleOCR + OPUS-MT)
+- Frontend deployment: Vercel
+- API deployment: Railway Free Tier (512 MB RAM limit)
 - Content format: Manga chapters uploaded as CBZ (zip of images)
 
 Goal of the system:
@@ -20,12 +24,14 @@ Goal of the system:
 
 The previous implementation used:
 
-- tesseract.js
-- mymemory translation
+- tesseract.js (browser OCR — poor manga accuracy)
+- mymemory translation (unreliable API)
+- manga-ocr via PyTorch (~444 MB — exceeded Railway RAM)
+- Flask server (replaced by FastAPI)
 
-These have been removed because they were unreliable.
+These have been removed because they were unreliable or exceeded memory limits.
 
-We are now building a more accurate OCR pipeline focused on manga.
+The current OCR pipeline uses **PaddleOCR** (CPU-only) and **OPUS-MT** (Helsinki-NLP/opus-mt-ja-en) for translation, both running in a Python FastAPI microservice on Railway.
 
 ### Important Rules for This Project
 
@@ -49,19 +55,25 @@ Good:
 
 Reuse existing utilities whenever possible.
 
-#### 2. Optimize for Vercel
+#### 2. Optimize for Railway's 512 MB RAM Limit
 
-Because this runs on Vercel serverless, do NOT introduce:
+The Python OCR/translation API runs on Railway's Free Tier with a **strict 512 MB RAM limit**. Do NOT introduce:
 
-- Heavy Python runtimes
-- Models >100MB
+- Heavy models (>300 MB loaded in memory)
+- Multiple workers or processes
+- GPU dependencies (CUDA, cuDNN)
+- Unbounded concurrent inference
+
+The frontend runs on Vercel (static SPA). Do NOT introduce:
+
+- Heavy Python runtimes in serverless functions
+- Models >100 MB in Vercel functions
 - Long cold start processes
 
 OCR must run through:
 
-- API services
-- Lightweight inference
-- External workers
+- The dedicated Python FastAPI microservice on Railway
+- Single-worker, serialized inference to stay within 512 MB
 
 #### 3. Maintain Database Compatibility
 
@@ -245,15 +257,18 @@ Output:
 
 Run OCR only on detected text regions.
 
-Recommended models:
+Current implementation:
 
-Option A (Preferred)
+- **PaddleOCR** (CPU-only, lang=japan) — deployed on Railway
 
-- MangaOCR
+PaddleOCR was chosen over manga-ocr because:
 
-Option B (Lightweight alternative)
-
-- PaddleOCR optimized for Japanese
+| Factor | PaddleOCR | manga-ocr |
+|---|---|---|
+| Memory footprint | ~170 MB | ~444 MB |
+| Railway 512 MB fit | Yes | No |
+| Runtime | PaddlePaddle (CPU) | PyTorch |
+| Japanese support | Built-in (lang=japan) | Specialized |
 
 Requirements:
 
@@ -267,11 +282,16 @@ Must support:
 
 Translate recognized Japanese text.
 
-Possible translation engines:
+Current implementation:
+
+- **OPUS-MT** (Helsinki-NLP/opus-mt-ja-en) — MarianMT model, ~300 MB
+
+The translation model runs in the same FastAPI service as OCR. It is loaded lazily on Railway to save ~200 MB cold-start RAM.
+
+Future possible engines (not currently active):
 
 - DeepL API
 - Google Translate API
-- LibreTranslate (fallback)
 
 Output:
 
@@ -422,7 +442,7 @@ The agent must output:
 - Reader overlay improvements
 - Validation logic
 
-All code must be TypeScript compatible with Next.js.
+All code must be TypeScript compatible with React 19 + Vite 7.
 
 ### Important Constraint
 
@@ -441,24 +461,25 @@ If something conflicts with existing logic:
 
 A high-accuracy manga OCR + translation pipeline that:
 
-- Works within Vercel limitations
+- Works within Railway's 512 MB RAM limit
 - Integrates with Supabase
 - Correctly renders translated speech bubbles
+- Runs OCR via the dedicated Python FastAPI microservice (not in-browser or Vercel)
 
 ### One More Thing (Important for Your Project)
 
-Based on earlier research, a practical stack is likely:
+Based on the current deployed stack:
 
-- Roboflow -> Speech Bubble Detection
-- PaddleOCR -> Text Recognition
-- DeepL -> Translation
+- **PaddleOCR** — Text recognition (CPU-only, fits Railway 512 MB)
+- **OPUS-MT** — Translation (Helsinki-NLP ja-en)
+- **FastAPI** — Server framework
 
-Not manga-ocr directly because:
+The manga-ocr model was replaced because:
 
 | Issue | Reason |
 |---|---|
-| Model size | ~444MB |
-| Runtime | Python required |
-| Vercel | Not suitable |
+| Model size | ~444 MB (exceeds Railway 512 MB RAM) |
+| Runtime | PyTorch required (heavy) |
+| Railway | Does not fit within Free Tier memory |
 
-So the agent should prefer PaddleOCR-style API implementations.
+PaddleOCR fits comfortably at ~170 MB loaded.

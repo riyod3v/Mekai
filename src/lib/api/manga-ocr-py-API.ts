@@ -27,23 +27,36 @@ const _isLocal =
 const BASE_API_URL: string = _isLocal
   ? ((import.meta.env.VITE_LOCAL_API_URL as string | undefined) ?? 'http://localhost:5100')
   : ((import.meta.env.VITE_OCR_API_URL as string | undefined) ?? '');
-/** How long (ms) to wait for a health probe before treating it as unavailable. */
-const PROBE_TIMEOUT_MS = 3_000;
+/** How long (ms) to wait for a health probe before treating it as unavailable.
+ *  Raised to 8 s so a localhost cold-start (model loading) doesn't falsely
+ *  report the server as unavailable after just 3 s. */
+const PROBE_TIMEOUT_MS = 8_000;
 
-// ─── Health check ─────────────────────────────────────────────
+// ─── Health check (with TTL cache) ───────────────────────────
+
+/** Cache probe results for 30 s to avoid 2 extra HTTP round-trips per OCR click. */
+const _probeCache = new Map<string, { ok: boolean; ts: number }>();
+const _PROBE_TTL_MS = 30_000;
 
 /**
  * Check whether a py-mekai-api endpoint responds within PROBE_TIMEOUT_MS.
+ * Results are cached for _PROBE_TTL_MS to reduce redundant health pings.
  */
 async function isServiceAvailable(path: string): Promise<boolean> {
   if (!BASE_API_URL) return false;
+  const now = Date.now();
+  const cached = _probeCache.get(path);
+  if (cached && now - cached.ts < _PROBE_TTL_MS) return cached.ok;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
     const res = await fetch(`${BASE_API_URL}${path}`, { method: 'GET', signal: ctrl.signal });
     clearTimeout(timer);
-    return res.ok;
+    const ok = res.ok;
+    _probeCache.set(path, { ok, ts: now });
+    return ok;
   } catch {
+    _probeCache.set(path, { ok: false, ts: now });
     return false;
   }
 }

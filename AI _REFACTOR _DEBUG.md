@@ -10,11 +10,13 @@
 c:/Users/Administrator/Documents/Mekai/
 ├── index.html                        ← Vite SPA entry point
 ├── vite.config.ts                    ← Vite + React config
-├── package.json                      ← dependencies (React 18, Vite, Supabase, TanStack Query, Tesseract.js, JSZip…)
+├── package.json                      ← dependencies (React 19, Vite 7, Supabase, TanStack Query, JSZip…)
 ├── vercel.json                       ← Vercel deployment (SPA rewrite rules)
-├── py-mekai-api/                     ← Python companion server (Flask)
-│   ├── server.py                     ← /ocr, /ocr/health, /translate, /translate/health
-│   └── requirements.txt              ← manga-ocr, argos-translate, flask, flask-cors
+├── py-mekai-api/                     ← Python companion server (FastAPI)
+│   ├── main.py                       ← /ocr, /ocr/health, /translate, /translate/health
+│   ├── Dockerfile                    ← Railway deployment image
+│   ├── requirements.txt              ← paddleocr, paddlepaddle, fastapi, transformers
+│   └── railway.json                  ← Railway deploy config
 └── src/
     ├── main.tsx                      ← React root mount
     ├── App.tsx                       ← Router, QueryClientProvider, AuthProvider
@@ -30,15 +32,21 @@ c:/Users/Administrator/Documents/Mekai/
     │   ├── useTheme.ts               ← Theme toggle helper
     │   └── useTranslationHistory.ts  ← TanStack Query wrappers for translation_history
     ├── lib/
-    │   ├── supabase.ts               ← Re-export barrel → supabase/client.ts
-    │   ├── supabase/client.ts        ← SINGLE Supabase createClient() call
-    │   ├── ocr.ts                    ← Tesseract.js OCR pipeline (legacy, partially active)
-    │   ├── manga-ocr-py-API.ts       ← HTTP client for py-mekai-api (OCR + translate)
-    │   ├── translate.ts              ← translateJapaneseToEnglish() via py-mekai-api
-    │   ├── browserAPI.ts             ← ocrAndTranslate() orchestration (active pipeline)
-    │   ├── romaji.ts                 ← toRomaji() helper
-    │   ├── dateUtils.ts              ← date formatting
-    │   └── redirectUtils.ts          ← post-auth redirect helpers
+    │   ├── api/
+    │   │   └── manga-ocr-py-API.ts   ← HTTP client for py-mekai-api (OCR + translate)
+    │   ├── ocr/
+    │   │   └── ocr.ts                ← Canvas crop, ink check, preprocessing (legacy Tesseract.js code still present)
+    │   ├── supabase/
+    │   │   ├── client.ts             ← SINGLE Supabase createClient() call
+    │   │   └── index.ts              ← Barrel re-export
+    │   ├── translate/
+    │   │   ├── romaji.ts             ← toRomaji() helper
+    │   │   └── translate.ts          ← translateJapaneseToEnglish() via py-mekai-api
+    │   └── utils/
+    │       ├── browserAPI.ts         ← ocrAndTranslate() orchestration (active pipeline)
+    │       ├── dateUtils.ts          ← date formatting
+    │       ├── logger.ts             ← Logging utility
+    │       └── redirectUtils.ts      ← post-auth redirect helpers
     ├── services/                     ← All Supabase DB access (one function per operation)
     │   ├── chapters.ts
     │   ├── chapterTranslations.ts    ← chapter_translations table
@@ -48,28 +56,34 @@ c:/Users/Administrator/Documents/Mekai/
     │   ├── storageCovers.ts
     │   ├── translationHistory.ts     ← translation_history table
     │   └── wordVault.ts              ← word_vault table
-    ├── pages/
-    │   ├── AuthPage.tsx
-    │   ├── LandingPage.tsx
-    │   ├── MangaEntryPage.tsx
-    │   ├── MangaReaderPage.tsx       ← Primary reader (OCR triggers, overlays, CBZ)
-    │   ├── ReaderDashboard.tsx
-    │   ├── Settings.tsx
-    │   ├── TranslatorDashboard.tsx
-    │   └── WordVaultPage.tsx
     ├── types/
     │   └── index.ts                  ← All shared types + regionHash()
-    └── ui/components/
-        ├── OCRSelectionLayer.tsx     ← Mouse drag-select on page image
-        ├── TranslationOverlay.tsx    ← In-bubble fitted-text canvas overlay
-        ├── HistoryPanel.tsx          ← Translation history drawer
-        ├── ChapterUploadForm.tsx
-        ├── MangaUploadForm.tsx
-        ├── Navbar.tsx
-        ├── StatusBar.tsx
-        ├── ProfileDropdown.tsx
-        ├── ProfileSettingsModal.tsx
-        └── (misc UI primitives)
+    └── ui/
+        ├── components/
+        │   ├── OCRSelectionLayer.tsx  ← Mouse drag-select on page image
+        │   ├── TranslationOverlay.tsx ← In-bubble fitted-text canvas overlay
+        │   ├── HistoryPanel.tsx       ← Translation history drawer
+        │   ├── ChapterUploadForm.tsx
+        │   ├── Drawer.tsx
+        │   ├── EmptyState.tsx
+        │   ├── ErrorState.tsx
+        │   ├── LoadingSpinner.tsx
+        │   ├── MangaCard.tsx
+        │   ├── MangaUploadForm.tsx
+        │   ├── Modal.tsx
+        │   ├── Navbar.tsx
+        │   ├── StatusBar.tsx
+        │   ├── ProfileDropdown.tsx
+        │   └── ProtectedRoute.tsx
+        └── pages/
+            ├── AuthPage.tsx
+            ├── LandingPage.tsx
+            ├── MangaEntryPage.tsx
+            ├── MangaReaderPage.tsx    ← Primary reader (OCR triggers, overlays, CBZ)
+            ├── ProfileSettings.tsx
+            ├── ReaderDashboard.tsx
+            ├── TranslatorDashboard.tsx
+            └── WordVaultPage.tsx
 ```
 
 **Application entry:** [`src/main.tsx`](src/main.tsx) → [`src/App.tsx`](src/App.tsx) (React Router + TanStack Query + Auth).
@@ -82,12 +96,12 @@ c:/Users/Administrator/Documents/Mekai/
 
 | File | Role |
 |---|---|
-| [`src/lib/ocr.ts`](src/lib/ocr.ts) | Tesseract.js OCR pipeline — **legacy, partially still active** |
-| [`src/lib/manga-ocr-py-API.ts`](src/lib/manga-ocr-py-API.ts) | HTTP client for manga-ocr (Python server) |
-| [`src/lib/browserAPI.ts`](src/lib/browserAPI.ts) | Main OCR+translate orchestrator (`ocrAndTranslate()`) |
+| [`src/lib/ocr/ocr.ts`](src/lib/ocr/ocr.ts) | Canvas crop, ink check, preprocessing — **legacy Tesseract.js code still present** |
+| [`src/lib/api/manga-ocr-py-API.ts`](src/lib/api/manga-ocr-py-API.ts) | HTTP client for py-mekai-api (OCR + translate) |
+| [`src/lib/utils/browserAPI.ts`](src/lib/utils/browserAPI.ts) | Main OCR+translate orchestrator (`ocrAndTranslate()`) |
 | [`src/ui/components/OCRSelectionLayer.tsx`](src/ui/components/OCRSelectionLayer.tsx) | Mouse drag UI to select a page region |
-| [`src/pages/MangaReaderPage.tsx`](src/pages/MangaReaderPage.tsx) | Calls `ocrAndTranslate()`, saves result, renders overlays |
-| [`py-mekai-api/server.py`](py-mekai-api/server.py) | Python Flask server — `/ocr` (manga-ocr) + `/translate` (Argos/OPUS-MT) |
+| [`src/ui/pages/MangaReaderPage.tsx`](src/ui/pages/MangaReaderPage.tsx) | Calls `ocrAndTranslate()`, saves result, renders overlays |
+| [`py-mekai-api/main.py`](py-mekai-api/main.py) | Python FastAPI server — `/ocr` (PaddleOCR) + `/translate` (OPUS-MT) |
 
 ### Current active OCR flow
 
@@ -99,9 +113,9 @@ User drag-selects a region
       ├─ ocr.ts/hasInkContent()      ← pre-flight Otsu binarization check
       ├─ isMangaOcrAvailable()        ← probe /ocr/health (30 s cache)
       ├─ ocr.ts/cropToDataUrl()       ← crop + base64 encode region
-      ├─ localMangaOcr(base64)        ← POST /ocr → manga-ocr Python model
+      ├─ localMangaOcr(base64)        ← POST /ocr → PaddleOCR Python model
       ├─ translateJapaneseToEnglishWithProvider()
-      │    └─ localTranslateJaToEn()  ← POST /translate → Argos/OPUS-MT
+      │    └─ localTranslateJaToEn()  ← POST /translate → OPUS-MT
       └─ toRomaji()                   ← client-side romanisation
   → save to translation_history (private)
   → if translator → upsert to chapter_translations (published)
@@ -110,13 +124,13 @@ User drag-selects a region
 
 ### Legacy OCR code still present in `ocr.ts`
 
-[`src/lib/ocr.ts`](src/lib/ocr.ts) still exports and defines:
-- [`ocrFromImageElement()`](src/lib/ocr.ts:444) — full Tesseract.js pipeline with `createWorker`, PSM 6 / PSM 11 retry
+[`src/lib/ocr/ocr.ts`](src/lib/ocr/ocr.ts) still exports and defines:
+- [`ocrFromImageElement()`](src/lib/ocr/ocr.ts:444) — full Tesseract.js pipeline with `createWorker`, PSM 6 / PSM 11 retry
 - Internal helpers: `cropToCanvas()`, `preprocessCanvasForManga()` (Otsu), `tightenToInk()`, `rotateIfVertical()`, `labelComponents()`, `cleanText()`
 
-Of those, only **two helpers are actually consumed** by the active pipeline via `browserAPI.ts`:
-- [`hasInkContent()`](src/lib/ocr.ts:376) — pre-flight ink check (uses `cropToCanvas` + `preprocessCanvasForManga` internally)
-- [`cropToDataUrl()`](src/lib/ocr.ts:416) — crop region to base64 PNG (uses `cropToCanvas`)
+Of those, only **two helpers are actually consumed** by the active pipeline via `src/lib/utils/browserAPI.ts`:
+- [`hasInkContent()`](src/lib/ocr/ocr.ts:376) — pre-flight ink check (uses `cropToCanvas` + `preprocessCanvasForManga` internally)
+- [`cropToDataUrl()`](src/lib/ocr/ocr.ts:416) — crop region to base64 PNG (uses `cropToCanvas`)
 
 The main `ocrFromImageElement()` function (and all its supporting internal code) is **unused** by the active code path; it is dead Tesseract.js code.
 
@@ -126,9 +140,9 @@ The main `ocrFromImageElement()` function (and all its supporting internal code)
 
 | File | Role |
 |---|---|
-| [`src/lib/translate.ts`](src/lib/translate.ts) | Public API: `translateJapaneseToEnglish()`, `translateJapaneseToEnglishWithProvider()` |
-| [`src/lib/manga-ocr-py-API.ts`](src/lib/manga-ocr-py-API.ts) | HTTP client: `localTranslateJaToEn()`, `isLocalTranslateAvailable()` |
-| [`py-mekai-api/server.py`](py-mekai-api/server.py) | `/translate` endpoint — Argos Translate (OPUS-MT ja→en) |
+| [`src/lib/translate/translate.ts`](src/lib/translate/translate.ts) | Public API: `translateJapaneseToEnglish()`, `translateJapaneseToEnglishWithProvider()` |
+| [`src/lib/api/manga-ocr-py-API.ts`](src/lib/api/manga-ocr-py-API.ts) | HTTP client: `localTranslateJaToEn()`, `isLocalTranslateAvailable()` |
+| [`py-mekai-api/main.py`](py-mekai-api/main.py) | `/translate` endpoint — OPUS-MT ja→en (Helsinki-NLP) |
 
 ### Current translation flow
 
@@ -139,7 +153,7 @@ translate.ts/translateJapaneseToEnglishWithProvider(text)
   ← { translatedText: "..." }
 ```
 
-**No fallback exists.** If the Python server is not running, translation throws an error. The `server.py` comment references "fallback to Tesseract.js + MyMemory" but **no such fallback exists in the current frontend code**. It is a stale comment from a previous implementation.
+**No fallback exists.** If the Python server is not running, translation throws an error.
 
 ---
 
@@ -148,7 +162,7 @@ translate.ts/translateJapaneseToEnglishWithProvider(text)
 ### Client initialisation
 
 - **Single client** created exclusively in [`src/lib/supabase/client.ts`](src/lib/supabase/client.ts) via `createClient()`.
-- Re-exported via barrel [`src/lib/supabase.ts`](src/lib/supabase.ts).
+- Re-exported via barrel [`src/lib/supabase/index.ts`](src/lib/supabase/index.ts).
 - All service files and page files import `supabase` from `@/lib/supabase` — **no duplicate clients found**.
 
 ### Table access map
@@ -195,7 +209,7 @@ These two aliases create confusion. Recommend removing them and using canonical 
 
 ### Issue 4 — `hasInkContent` duplicates inner pixel-scan work
 
-[`hasInkContent()`](src/lib/ocr.ts:376) re-runs `cropToCanvas()` + `preprocessCanvasForManga()` + a pixel scan. Then `cropToDataUrl()` (called afterward) re-runs `cropToCanvas()` again. The same canvas crop is computed **twice** per OCR call. A shared `prepareCanvas()` helper returning a cached canvas would eliminate this.
+[`hasInkContent()`](src/lib/ocr/ocr.ts:376) re-runs `cropToCanvas()` + `preprocessCanvasForManga()` + a pixel scan. Then `cropToDataUrl()` (called afterward) re-runs `cropToCanvas()` again. The same canvas crop is computed **twice** per OCR call. A shared `prepareCanvas()` helper returning a cached canvas would eliminate this.
 
 ---
 
@@ -236,13 +250,13 @@ Overlays use the `RegionBox { x, y, w, h }` type where all values are **fraction
 
 | Risk | Location | Severity |
 |---|---|---|
-| **Double canvas crop per OCR call** | `browserAPI.ts` calls `hasInkContent()` then `cropToDataUrl()` — `cropToCanvas()` runs twice | Medium |
-| **One Tesseract Worker created and destroyed per OCR call** | `ocr.ts/ocrFromImageElement()` | High (but function is currently unused) |
+| **Double canvas crop per OCR call** | `src/lib/utils/browserAPI.ts` calls `hasInkContent()` then `cropToDataUrl()` — `cropToCanvas()` runs twice | Medium |
+| **One Tesseract Worker created and destroyed per OCR call** | `src/lib/ocr/ocr.ts` — `ocrFromImageElement()` | High (but function is currently unused) |
 | **Whole CBZ fetched and unzipped in browser memory** | `MangaReaderPage` CBZ extraction via JSZip | Medium — large chapters (50+ pages) will stress RAM |
 | **All page images extracted at once as Object URLs** | `Promise.all(imageEntries.map(...))` | Medium — no lazy/progressive loading |
 | **One ResizeObserver per TranslationOverlay** | `TranslationOverlay.tsx` | Low-Medium at scale |
 | **`supabase.auth.getUser()` called on every DB write** | `chapterTranslations.ts`, `translationHistory.ts` | Low — cached by SDK but still async overhead |
-| **Service availability probed on every `ocrAndTranslate()` call** | `manga-ocr-py-API.ts` | Low — 30 s cache mitigates, but first call in window has latency |
+| **Service availability probed on every `ocrAndTranslate()` call** | `src/lib/api/manga-ocr-py-API.ts` | Low — 30 s cache mitigates, but first call in window has latency |
 | **Scroll-mode reading progress writes every 2 s** | `MangaReaderPage` IntersectionObserver debounce | Low |
 
 ---
@@ -253,7 +267,7 @@ Overlays use the `RegionBox { x, y, w, h }` type where all values are **fraction
 
 | File / Symbol | Reason | Safe to remove? |
 |---|---|---|
-| [`ocrFromImageElement()`](src/lib/ocr.ts:444) in `ocr.ts` | Not imported anywhere; replaced by manga-ocr Python path | **Yes** |
+| [`ocrFromImageElement()`](src/lib/ocr/ocr.ts:444) in `ocr.ts` | Not imported anywhere; replaced by PaddleOCR Python path | **Yes** |
 | `rotateIfVertical()` in `ocr.ts` | Only used by `ocrFromImageElement()` | **Yes** |
 | `tightenToInk()` in `ocr.ts` | Only used by `ocrFromImageElement()` | **Yes** |
 | `labelComponents()` in `ocr.ts` | Only used by `tightenToInk()` | **Yes** |
@@ -262,7 +276,7 @@ Overlays use the `RegionBox { x, y, w, h }` type where all values are **fraction
 | `console.warn` patch for Tesseract "Parameter not found" in `ocr.ts` | Suppresses Tesseract.js noise — irrelevant once Tesseract is removed | **Yes** |
 | `tesseract.js` npm dependency | Bundled but the active OCR path never calls `createWorker` | **Yes** (remove from `package.json`) |
 | `addHistoryEntry` / `deleteHistoryEntry` alias exports in `translationHistory.ts` | Aliases for canonical functions; stale naming from prior refactor | **Yes** (remove aliases, keep canonical names) |
-| Comment in `server.py` line 39: _"falls back to Tesseract.js + MyMemory"_ | Fallback does not exist in current frontend | Update comment |
+| Stale comments referencing Tesseract.js / MyMemory / Flask in `main.py` | Legacy references from previous implementation | Update or remove |
 
 ### Uncertain / keep for now
 
@@ -329,7 +343,7 @@ Chapter page loaded
   → TranslationOverlay renders all regions
 ```
 
-Integration point in the frontend: after CBZ extraction and before first render, trigger `POST /detect` with each page image and pre-populate `publishedOverlays`. A new `/detect` endpoint must be added to `py-mekai-api/server.py`.
+Integration point in the frontend: after CBZ extraction and before first render, trigger `POST /detect` with each page image and pre-populate `publishedOverlays`. A new `/detect` endpoint must be added to `py-mekai-api/main.py`.
 
 #### F — Consider lazy CBZ page extraction
 
@@ -343,8 +357,8 @@ Instead of extracting all pages at once with `Promise.all`, extract the first 3 
 |---|---|---|
 | Supabase client | ✅ Single instance, well-centralised | None |
 | OCR active path | ✅ manga-ocr via Python | Keep |
-| OCR legacy path (Tesseract.js) | ⚠️ Dead code still present | Remove `ocrFromImageElement` + `tesseract.js` dep |
-| Translation | ✅ OPUS-MT via Python | Keep; remove stale fallback comment |
+| OCR legacy path (Tesseract.js) | ⚠️ Dead code still present in `src/lib/ocr/ocr.ts` | Remove `ocrFromImageElement` + `tesseract.js` dep |
+| Translation | ✅ OPUS-MT via Python (FastAPI) | Keep |
 | Translation storage | ⚠️ Double inline write in page component | Extract to service function |
 | Overlay rendering | ✅ Correct fractional coordinates | Minor: share ResizeObserver |
 | `regionHash` dedup | ✅ DB constraint + in-memory key dedup | Compute once per OCR call |

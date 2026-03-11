@@ -570,22 +570,34 @@ export default function MangaReaderPage() {
           await queryClient.invalidateQueries({
             queryKey: ['chapter_translations', chapterId],
           });
-          notify.success('Published translation deleted');
+          notify.success('Translation deleted');
         } catch {
-          notify.error('Failed to delete published translation');
+          notify.error('Failed to delete translation');
         }
       } else {
         // Delete from user's private translation_history
         setUserOverlays((prev) => prev.filter((o) => o.id !== id));
         try {
           await deleteHistory.mutateAsync(id);
+          // If the translator also published this bubble, delete the published copy
+          // in the same operation — prevents it from re-surfacing after history
+          // deletion and forcing a second manual delete.
+          if (isChapterOwner) {
+            const published = publishedOverlays.find((o) => o.key === overlay.key);
+            if (published) {
+              await deleteChapterTranslation(published.id);
+              await queryClient.invalidateQueries({
+                queryKey: ['chapter_translations', chapterId],
+              });
+            }
+          }
           notify.success('Translation deleted');
         } catch {
-          notify.error('Failed to delete from history');
+          notify.error('Failed to delete translation');
         }
       }
     },
-    [mergedOverlays, deleteHistory, chapterId, queryClient, notify],
+    [mergedOverlays, publishedOverlays, deleteHistory, chapterId, queryClient, notify, isChapterOwner],
   );
 
   // ── Save overlay to word vault ─────────────────────────────

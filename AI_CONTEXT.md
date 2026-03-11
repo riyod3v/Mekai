@@ -12,7 +12,7 @@ Mekai is an OCR-assisted manga reading platform that allows users to:
 
 - Read manga scans
 - Select speech bubbles for OCR
-- Translate text
+- Translate text (Japanese to English)
 - Store vocabulary in a Word Vault
 - Share manga libraries between translators and readers
 
@@ -25,17 +25,18 @@ The application prioritizes **user-controlled OCR** instead of full-page OCR.
 Mekai follows a hybrid frontend + backend service architecture.
 
 ```
-React Frontend
-      │
-      ▼
+React Frontend (Vite SPA)
+      |
+      v
 Supabase Backend
-(Auth • Postgres • Storage • Realtime)
-      │
-      ▼
-External Python OCR API
+(Auth - Postgres - Storage - Realtime)
+      |
+      v
+Python OCR/Translation API (FastAPI)
+(PaddleOCR + OPUS-MT — Railway)
 ```
 
-### Important Architectural Rule
+### Important Architectural Rules
 
 > **OCR must not run inside the browser or Vercel serverless functions.**
 
@@ -45,7 +46,9 @@ Reasons:
 - OCR processing is CPU intensive
 - Vercel cold starts break OCR workflows
 
-Therefore OCR runs in a dedicated Python microservice.
+Therefore OCR runs in a dedicated Python FastAPI microservice deployed on Railway.
+
+> **Railway Free Tier enforces a strict 512 MB RAM limit.** All backend dependencies and runtime behavior are tuned for this constraint. See the [Memory Constraints](#memory-constraints-railway-free-tier) section.
 
 ---
 
@@ -55,45 +58,58 @@ The OCR system works as follows:
 
 1. User draws a bounding box around a speech bubble.
 2. The browser crops the selected region using Canvas.
-3. The image is upscaled 2× to improve OCR accuracy.
-4. The image is uploaded to **Supabase Storage** — Bucket: `ocr-temp`.
-5. A signed URL is generated.
-6. The signed URL is sent to the OCR API:
+3. An ink pre-flight check (`hasInkContent`) rejects empty selections.
+4. The cropped image is encoded as base64.
+5. The base64 image is sent to the OCR API:
 
 ```json
 POST /ocr
 {
-  "imageUrl": "<signed-url>"
+  "image": "<base64-data>"
 }
 ```
 
-7. The OCR API downloads the image and performs Japanese text recognition.
-8. Extracted text is returned to the frontend:
+6. The OCR API (PaddleOCR) processes the image and returns extracted text:
 
 ```json
 {
-  "text": "こんにちは"
+  "text": "Japanese text"
 }
 ```
 
-9. The frontend sends the text to the translation service.
+7. The frontend sends the text to the translation endpoint:
+
+```json
+POST /translate
+{
+  "q": "Japanese text",
+  "source": "ja",
+  "target": "en"
+}
+```
+
+8. Translated text + romaji is rendered as a speech bubble overlay.
 
 ---
 
 ## Translation System
 
-Translation is handled by a pluggable service layer.
+Translation is handled via the Python API's OPUS-MT (Helsinki-NLP/opus-mt-ja-en) model.
 
-**Location:** `src/services/translation.ts`
+**Frontend client:** `src/lib/api/manga-ocr-py-API.ts`
 
-Supported translation providers:
+**Translation wrapper:** `src/lib/translate/translate.ts`
 
-- LibreTranslate
-- DeepL
-- Google Translate
+The Python API endpoint:
 
-> **Fallback systems must not be added automatically.**
-> Translation providers must be explicitly configured through environment variables.
+```
+POST /translate
+{ "q": "...", "source": "ja", "target": "en" }
+-> { "translatedText": "..." }
+```
+
+> **No fallback exists.** If the Python API is unavailable, translation shows an error.
+> Removed providers (Tesseract.js, MyMemory, LibreTranslate) must not be reintroduced.
 
 ---
 
@@ -124,20 +140,19 @@ Supabase does **not** perform OCR or translation.
 The React frontend handles:
 
 - Manga reading UI
-- Speech bubble selection
-- OCR request creation
+- Speech bubble selection (OCR region drawing)
+- OCR request creation (base64 encoding + API call)
 - Translation overlays
 - Word Vault management
+- CBZ file extraction (JSZip)
 
 > **The frontend never performs OCR directly.**
 
-**Important UI Component:** `src/components/OCRSelectionLayer.tsx`
+**Key UI Component:** `src/ui/components/OCRSelectionLayer.tsx`
 
 Responsibilities:
-- Draw bounding box
-- Crop image region
-- Upscale image
-- Send OCR request
+- Draw bounding box on manga page
+- Trigger `ocrAndTranslate()` in `src/lib/utils/browserAPI.ts`
 
 ---
 
@@ -166,7 +181,7 @@ Two reading modes are supported:
 - **Page-by-page mode**
 - **Vertical scroll mode**
 
-**Location:** `src/pages/MangaReaderPage.tsx`
+**Location:** `src/ui/pages/MangaReaderPage.tsx`
 
 ---
 
@@ -178,31 +193,59 @@ Two reading modes are supported:
 |----------|---------|
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key |
-| `VITE_OCR_API_URL` | Python OCR service URL |
-| `VITE_TRANSLATE_API_URL` | Translation service URL |
-| `VITE_TRANSLATE_API_KEY` | Translation service API key |
+| `VITE_OCR_API_URL` | Python OCR service URL (production) |
+| `VITE_LOCAL_API_URL` | Local dev API URL (default: `http://localhost:5100`) |
+
+### Python API (Railway)
+
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | Injected by Railway |
+| `MEKAI_ALLOWED_ORIGINS` | Comma-separated CORS origins |
 
 ---
 
-## Python OCR Service
+## Python OCR/Translation Service
 
 **Location:** `py-mekai-api/`
 
 ```
 py-mekai-api/
-├── server.py
-├── requirements.txt
-└── models/
+|-- main.py            <- FastAPI server (PaddleOCR + OPUS-MT)
+|-- Dockerfile         <- Railway deployment image
+|-- requirements.txt
+|-- railway.json
+|-- Procfile
++-- README.md
 ```
 
-**Endpoint:**
+**Endpoints:**
 
-```json
-POST /ocr
+| Method | Path | Input | Output |
+|--------|------|-------|--------|
+| GET | `/` | -- | Health check |
+| GET | `/ocr/health` | -- | OCR readiness |
+| POST | `/ocr` | `{ "image": "<base64>" }` | `{ "text": "..." }` |
+| GET | `/translate/health` | -- | Translation readiness |
+| POST | `/translate` | `{ "q": "...", "source": "ja", "target": "en" }` | `{ "translatedText": "..." }` |
 
-Input:  { "imageUrl": string }
-Output: { "text": string }
-```
+---
+
+## Memory Constraints (Railway Free Tier)
+
+> **The Python API runs on Railway's Free Tier with a strict 512 MB RAM limit.**
+
+Optimizations in place:
+
+- **CPU-only PyTorch** (~200 MB vs ~2.5 GB with CUDA)
+- **PaddleOCR** replaces the heavier manga-ocr (~170 MB vs ~444 MB)
+- **CPU threads pinned to 2** on Railway to prevent scheduler contention
+- **OCR requests serialized** via semaphore — one inference at a time
+- **Translation model loaded lazily** on first request (saves ~200 MB cold-start RAM)
+- **Image input capped at 512px** max dimension
+- **Single Uvicorn worker** (no multi-process overhead)
+
+AI agents must not introduce dependencies that increase RAM usage without explicit approval. Any new model or library must be evaluated against the 512 MB budget.
 
 ---
 
@@ -212,9 +255,11 @@ The following systems were **intentionally removed** and must **not** be reintro
 
 | System | Reason |
 |--------|--------|
-| Tesseract.js | Poor accuracy, runs in browser |
+| Tesseract.js | Poor accuracy for manga, runs in browser |
 | MyMemory translation | Reliability issues, API limitations |
 | Apify OCR actor | API limitations |
+| manga-ocr (PyTorch) | ~444 MB model, exceeds Railway 512 MB RAM limit |
+| Flask | Replaced by FastAPI for async support |
 
 ---
 
@@ -224,11 +269,33 @@ AI agents must follow these rules:
 
 1. **Do not add OCR libraries to the browser.**
 2. **Do not run OCR inside Vercel functions.**
-3. **Do not reintroduce removed systems** (Tesseract.js, MyMemory, Apify).
+3. **Do not reintroduce removed systems** (Tesseract.js, MyMemory, Apify, manga-ocr).
 4. **Avoid duplicate service layers.**
 5. If modifying Supabase queries, **preserve RLS compatibility**.
 6. **Avoid breaking existing file paths.**
-7. Maintain separation between: `components` / `services` / `lib` / `pages`
+7. Maintain separation: `ui/components` / `ui/pages` / `services` / `lib` / `hooks` / `context`
+8. **Respect the 512 MB Railway RAM limit** — do not add heavyweight dependencies.
+
+---
+
+## Project Structure Reference
+
+```
+src/
+|-- context/           <- React context providers (notifications, theme)
+|-- hooks/             <- Custom React hooks (auth, realtime, role, theme, history)
+|-- lib/
+|   |-- api/           <- HTTP clients for external APIs
+|   |-- ocr/           <- Canvas crop, ink check, image preprocessing
+|   |-- supabase/      <- Supabase client (single instance)
+|   |-- translate/     <- Translation + romaji helpers
+|   +-- utils/         <- browserAPI orchestrator, date/redirect/logging utils
+|-- services/          <- All Supabase DB operations (one file per table)
+|-- types/             <- Shared TypeScript types + regionHash()
++-- ui/
+    |-- components/    <- Reusable UI components
+    +-- pages/         <- Route-level page components
+```
 
 ---
 
@@ -236,9 +303,9 @@ AI agents must follow these rules:
 
 Possible improvements (not part of the current system):
 
-- Speech bubble detection models
+- Automatic speech bubble detection (no manual selection)
 - GPU OCR acceleration
-- AI translation context improvement
+- Translation context improvement
 - Text overlay editing tools
 
 ---
@@ -249,8 +316,8 @@ Mekai is built around user-controlled selective OCR:
 
 | Layer | Responsibility |
 |-------|---------------|
-| **Frontend** | Selection UI, overlays, Word Vault |
+| **Frontend** | Selection UI, overlays, Word Vault, reading modes |
 | **Supabase** | Storage, database, auth, realtime |
-| **Python API** | OCR processing, translation |
+| **Python API** | OCR (PaddleOCR) + translation (OPUS-MT ja-en) |
 
-This architecture allows the platform to scale while keeping the frontend lightweight.
+This architecture keeps the frontend lightweight while staying within Railway's 512 MB RAM limit.

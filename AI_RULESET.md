@@ -14,7 +14,7 @@ Example:
 
 GOOD:
 
-Task: Implement OCR request handler in `src/services/ocr.ts`.
+Task: Implement OCR request handler in `src/lib/api/manga-ocr-py-API.ts`.
 
 BAD:
 
@@ -43,7 +43,7 @@ Frontend:
 - Vite 7
 - Tailwind CSS v4
 - React Router v7
-- TanStack Query
+- TanStack Query v5
 
 Backend:
 
@@ -52,9 +52,16 @@ Backend:
 - Supabase Storage
 - Supabase Realtime
 
-OCR service:
+OCR/Translation service:
 
-- Python microservice
+- Python FastAPI microservice (PaddleOCR + OPUS-MT)
+- Deployed on Railway Free Tier (512 MB RAM limit)
+
+## Railway Memory Constraint
+
+> **The Python API runs on Railway's Free Tier with a strict 512 MB RAM limit.**
+
+Agents must not introduce dependencies that increase RAM usage without explicit approval. All backend changes must be evaluated against the 512 MB memory budget. See `AI_CONTEXT.md` for optimization details.
 
 ## Forbidden Additions
 
@@ -63,7 +70,9 @@ Agents must NOT add:
 - Tesseract.js
 - MyMemory API
 - Apify OCR actor
-- Serverless OCR
+- manga-ocr (PyTorch — exceeds Railway 512 MB RAM budget)
+- Serverless OCR (Vercel functions)
+- Flask (replaced by FastAPI)
 
 These were intentionally removed.
 
@@ -96,7 +105,8 @@ Each translation region contains:
 
 These are stored in:
 
-- chapter_translations
+- `chapter_translations` (published, shared)
+- `translation_history` (private, per-user)
 
 This enables:
 
@@ -116,24 +126,39 @@ Agents must not remove this system.
 
 ## Services Directory Rules
 
-All API communication must be implemented inside:
+All Supabase database operations must be implemented inside:
 
 `src/services/`
 
 Examples:
 
-- `src/services/ocr.ts`
-- `src/services/translation.ts`
 - `src/services/manga.ts`
 - `src/services/chapters.ts`
+- `src/services/chapterTranslations.ts`
+- `src/services/translationHistory.ts`
+- `src/services/wordVault.ts`
 
-Components must never directly call APIs.
+## API Client Rules
+
+External API communication (OCR/translation HTTP calls) lives in:
+
+`src/lib/api/`
+
+Example:
+
+- `src/lib/api/manga-ocr-py-API.ts` — HTTP client for the Python OCR/translation API
+
+Components and pages must not directly call external APIs.
 
 ## Component Rules
 
 UI logic must stay inside:
 
-`src/components/`
+`src/ui/components/`
+
+Page-level components go in:
+
+`src/ui/pages/`
 
 Business logic must stay inside:
 
@@ -143,11 +168,32 @@ Shared utilities go in:
 
 `src/lib/`
 
+## Directory Structure
+
+```
+src/
+|-- context/           <- React context providers
+|-- hooks/             <- Custom React hooks
+|-- lib/
+|   |-- api/           <- External API HTTP clients
+|   |-- ocr/           <- Canvas crop, ink check, preprocessing
+|   |-- supabase/      <- Supabase client (single instance)
+|   |-- translate/     <- Translation + romaji helpers
+|   +-- utils/         <- browserAPI orchestrator, utilities
+|-- services/          <- Supabase DB operations
+|-- types/             <- Shared TypeScript types
++-- ui/
+    |-- components/    <- Reusable UI components
+    +-- pages/         <- Route-level page components
+```
+
 ## Supabase Access Rules
 
 Supabase client must only be created in:
 
-`src/lib/supabase.ts`
+`src/lib/supabase/client.ts`
+
+Barrel re-export at `src/lib/supabase/index.ts`.
 
 No duplicate clients allowed.
 
@@ -165,10 +211,11 @@ Agents must not create new buckets without explicit instruction.
 
 OCR images must:
 
-- Be cropped in browser
-- Be upscaled 2x
-- Be uploaded to ocr-temp
-- Be processed by OCR API
+- Be cropped in browser (Canvas)
+- Pass ink pre-flight check (`hasInkContent`)
+- Be encoded as base64
+- Be sent to the Python API (`POST /ocr`)
+- Be processed by PaddleOCR on the server
 
 OCR must never run in browser or Vercel functions.
 
@@ -179,7 +226,7 @@ Agents must preserve:
 - Supabase RLS compatibility
 - Owner-only Word Vault access
 - Authenticated uploads
-- Signed URL usage for OCR images
+- Signed URL usage for temporary OCR images
 
 ## Allowed Future Improvements
 

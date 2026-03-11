@@ -1,7 +1,7 @@
 # Mekai API — Lightweight PaddleOCR Backend
 
 Manga OCR + translation microservice for the Mekai platform.
-Designed to run within **Railway's 500 MB RAM limit** using CPU-only
+Designed to run within **Railway's 512 MB RAM limit** using CPU-only
 PaddlePaddle + PaddleOCR instead of the heavier PyTorch/manga-ocr stack.
 
 > **Python 3.10 – 3.12 required.** Python 3.13+ may break some dependencies.
@@ -225,3 +225,6 @@ python main.py
 > **Known issue:** PyTorch is still required for OPUS-MT translation.
 > A future improvement could swap to a lighter translation engine
 > (e.g. CTranslate2 or Argos Translate) to eliminate the PyTorch dependency.
+>
+> **Total runtime RSS must stay below 512 MB** (Railway Free Tier hard limit).
+> Adding new models or dependencies requires evaluating their memory impact.

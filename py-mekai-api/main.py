@@ -156,7 +156,7 @@ def get_paddle_ocr():
                 det_db_score_mode="fast",
                 det_db_box_thresh=0.2,
                 det_db_unclip_ratio=1.8,   # wider unclip for tight manga text / small kana
-                det_limit_side_len=512,
+                det_limit_side_len=512 if _on_railway else 960,
                 # ── Recognition tuning ──
                 rec_batch_num=1,
                 use_space_char=False,       # Japanese has no inter-word spaces
@@ -240,7 +240,9 @@ def _translate_opus(text: str) -> str:
             output = model.generate(
                 **inputs,
                 max_length=256,
-                num_beams=2,
+                num_beams=_TRANSLATE_NUM_BEAMS,
+                no_repeat_ngram_size=3,  # prevents repetitive output artifacts
+                length_penalty=0.9,     # slightly prefer natural-length output
                 early_stopping=True,
             )
         result = tokenizer.decode(output[0], skip_special_tokens=True)
@@ -456,17 +458,23 @@ def _decode_base64_image(image_b64: str) -> Image.Image:
 
 
 # Maximum dimension (width or height) for OCR input — keeps memory under control.
-# 640px is the sweet spot for Railway: large enough for PaddleOCR accuracy on
-# manga text bubbles, small enough to stay within Railway's 500 MB RAM and
-# finish well under the 60s edge timeout.  (800→640 = ~36% fewer pixels.)
-_OCR_MAX_DIMENSION = 512    
+# Railway (512 MB RAM): cap at 512 to stay within constraints.
+# Local: 960 gives ~3.5× more pixels, dramatically improving recognition of
+# complex kanji (e.g. 様 vs 機) and katakana/hiragana disambiguation.
+_OCR_MAX_DIMENSION = 512 if _on_railway else 960
 
 # Minimum dimension — PaddleOCR recognition expects ≥32px height.  Tiny crops
-# get upscaled so the recognition model can read them.
-_OCR_MIN_DIMENSION = 32
+# get upscaled so the recognition model can read them.  Locally we use 64 so
+# small bubbles get enough detail for accurate stroke recognition.
+_OCR_MIN_DIMENSION = 32 if _on_railway else 64
 
 # Maximum base64 payload size (~10 MB encoded ≈ ~7.5 MB raw image)
 _MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
+
+# Translation beam width — more beams = better quality at the cost of CPU + RAM.
+# 4 beams is the standard quality setting for MarianMT / OPUS-MT; Railway uses
+# 2 to stay within 512 MB RAM.
+_TRANSLATE_NUM_BEAMS = 2 if _on_railway else 4
 
 
 def _preprocess_manga_image(img_array):
@@ -508,7 +516,51 @@ def _preprocess_manga_image(img_array):
     elif std_lum < 35:
         img_array = cv2.convertScaleAbs(img_array, alpha=1.3, beta=10)
 
+    # Light unsharp-mask to bring out fine stroke edges — helps PaddleOCR
+    # distinguish similar kanji (e.g. 様 vs 機) and kana script types.
+    # Radius=1.0, amount=0.3 is conservative enough to avoid amplifying noise.
+    blurred = cv2.GaussianBlur(img_array, (0, 0), 1.0)
+    img_array = cv2.addWeighted(img_array, 1.3, blurred, -0.3, 0)
+    del blurred
+
     return img_array
+
+
+def _clean_ocr_text(text: str) -> str:
+    """
+    Normalise raw PaddleOCR output before sending to the translation model.
+
+    1. NFKC normalisation — converts half-width katakana to full-width (e.g.
+       ｶ → カ), decomposes compatibility ligatures, and normalises digits so
+       OPUS-MT tokenisation is consistent with its training data.
+    2. Strip whitespace between consecutive Japanese characters — PaddleOCR
+       sometimes inserts spaces inside a word (「行 く か」→「行くか」) as a
+       side-effect of treating each glyph as a separate detection.
+    3. Remove stray runs of 3+ Latin / accented-ASCII characters that are OCR
+       noise from artwork borders or furigana that survived the area filter.
+    """
+    import unicodedata
+
+    text = text.strip()
+    if not text:
+        return text
+
+    # 1) NFKC normalisation
+    text = unicodedata.normalize('NFKC', text)
+
+    # 2) Remove spaces between adjacent Japanese characters
+    #    Range covers hiragana, katakana, CJK ideographs, CJK punctuation,
+    #    and fullwidth/halfwidth forms.
+    text = _re.sub(
+        r'(?<=[\u3000-\u9fff\uff00-\uffef])\s+(?=[\u3000-\u9fff\uff00-\uffef])',
+        '',
+        text,
+    )
+
+    # 3) Drop runs of 3+ Latin/accented-ASCII that are OCR noise
+    text = _re.sub(r'[a-zA-Z\u00c0-\u00ff]{3,}', '', text)
+
+    return text.strip()
 
 
 def _run_paddle_ocr(img: Image.Image) -> str:
@@ -583,7 +635,8 @@ def _run_paddle_ocr(img: Image.Image) -> str:
         #   bbox = [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
         # We collect (center_x, center_y, text) for reading-order sort.
         _MIN_CONFIDENCE = 0.3  # drop noisy low-confidence detections
-        segments: list[tuple[float, float, str]] = []
+        # cx, cy, text, bbox_area, bbox_height
+        segments: list[tuple[float, float, str, float, float]] = []
 
         for page in results:
             if not page:
@@ -607,17 +660,62 @@ def _run_paddle_ocr(img: Image.Image) -> str:
                         continue
                     cx = sum(p[0] for p in bbox_or_text) / len(bbox_or_text)
                     cy = sum(p[1] for p in bbox_or_text) / len(bbox_or_text)
-                    segments.append((cx, cy, text))
+                    xs = [p[0] for p in bbox_or_text]
+                    ys = [p[1] for p in bbox_or_text]
+                    area = (max(xs) - min(xs)) * (max(ys) - min(ys))
+                    height = max(ys) - min(ys)
+                    segments.append((cx, cy, text, area, height))
                 else:
                     # det=False fallback: item is (text, score)
                     text = str(bbox_or_text).strip()
                     if text:
-                        segments.append((0.0, float(len(segments)), text))
+                        segments.append((0.0, float(len(segments)), text, 0.0, 0.0))
 
         del results
 
         if not segments:
             return ""
+
+        # ── Furigana filter ───────────────────────────────────────
+        # Furigana (ruby text) printed beside kanji creates small bounding
+        # boxes that PaddleOCR picks up as separate text segments, inserting
+        # hiragana readings into the middle of the main text.
+        # Dual filter — a segment is furigana if EITHER:
+        #   • its bbox area  < 25% of the median detection area, OR
+        #   • its bbox height < 40% of the median detection height.
+        # Height is more reliable than area alone because furigana is always
+        # significantly shorter than the main text, even if it spans a wide
+        # horizontal extent alongside a column of characters.
+        if len(segments) > 1:
+            det_areas   = sorted(s[3] for s in segments if s[3] > 0)
+            det_heights = sorted(s[4] for s in segments if s[4] > 0)
+            median_area   = det_areas[len(det_areas) // 2] if det_areas else 0
+            median_height = det_heights[len(det_heights) // 2] if det_heights else 0
+
+            if median_area > 0 or median_height > 0:
+                before = len(segments)
+                kept: list[tuple[float, float, str, float, float]] = []
+                for s in segments:
+                    # Keep all fallback segments (area/height == 0)
+                    if s[3] == 0.0 and s[4] == 0.0:
+                        kept.append(s)
+                        continue
+                    is_tiny_area   = median_area > 0 and s[3] < median_area * 0.25
+                    is_tiny_height = median_height > 0 and s[4] < median_height * 0.40
+                    if is_tiny_area or is_tiny_height:
+                        log.info(
+                            "  Furigana dropped: %r  (area=%.0f/%.0f=%.0f%%  h=%.0f/%.0f=%.0f%%)",
+                            s[2], s[3], median_area, s[3] / max(median_area, 1) * 100,
+                            s[4], median_height, s[4] / max(median_height, 1) * 100,
+                        )
+                        continue
+                    kept.append(s)
+                if len(kept) < before:
+                    log.info(
+                        "Furigana filter removed %d segment(s) (median area=%.0f px², median h=%.0f px)",
+                        before - len(kept), median_area, median_height,
+                    )
+                segments = kept
 
         # ── Sort in manga reading order ──────────────────────────
         # Manga reads right-to-left columns, top-to-bottom within.
@@ -626,7 +724,7 @@ def _run_paddle_ocr(img: Image.Image) -> str:
         if len(segments) > 1:
             segments.sort(key=lambda s: -s[0])  # right-to-left first
             col_thresh = max(img_w * 0.20, 15)  # pixels
-            columns: list[list[tuple[float, float, str]]] = [[segments[0]]]
+            columns: list[list[tuple[float, float, str, float, float]]] = [[segments[0]]]
             for seg in segments[1:]:
                 if abs(seg[0] - columns[-1][0][0]) < col_thresh:
                     columns[-1].append(seg)
@@ -640,8 +738,10 @@ def _run_paddle_ocr(img: Image.Image) -> str:
         else:
             ordered = [segments[0][2]]
 
-        log.info("OCR segments (%d): %s", len(ordered), ordered)
-        return "".join(ordered)
+        raw_text = "".join(ordered)
+        cleaned = _clean_ocr_text(raw_text)
+        log.info("OCR segments (%d) raw=%r  cleaned=%r", len(ordered), raw_text, cleaned)
+        return cleaned
 
     finally:
         _ocr_semaphore.release()
@@ -746,7 +846,7 @@ async def ocr(
         # Run OCR in a dedicated single-thread executor with a 50-second
         # timeout — leaves ~10s headroom before Railway's 60s edge proxy
         # timeout.  The dedicated executor prevents unbounded thread creation.
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         text = await asyncio.wait_for(
             loop.run_in_executor(_ocr_executor, _run_paddle_ocr, img),
             timeout=50.0,
@@ -876,7 +976,7 @@ async def translate(request: Request):
     translate_timeout = 30.0 if _on_railway else 60.0
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(_translate_executor, _translate_opus, text),
             timeout=translate_timeout,

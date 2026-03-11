@@ -27,8 +27,10 @@ export type BBox = {
 
 // ─── Constants ────────────────────────────────────────────────
 
-/** Upscale factor applied to the cropped region before OCR. */
-const UPSCALE = 3;
+/** Upscale factor applied to the cropped region before OCR.
+ *  4× gives PaddleOCR enough pixels to distinguish complex kanji strokes
+ *  and katakana vs hiragana (e.g. リ vs り). */
+const UPSCALE = 4;
 
 /** Default Tesseract language. Override per call if needed. */
 const DEFAULT_LANG = 'jpn';

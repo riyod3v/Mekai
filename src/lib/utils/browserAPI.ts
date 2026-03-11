@@ -91,8 +91,11 @@ export async function ocrAndTranslate(
       const result = await translateJapaneseToEnglishWithProvider(ocrText);
       translated = result.translated;
       translationProvider = result.provider;
-    } catch {
-      // Translation is best-effort; surface OCR text even if translation fails
+    } catch (err) {
+      // Translation failed — fall back to showing the Japanese OCR text so
+      // the overlay is never blank (important for a live demo / offline use).
+      translated = ocrText;
+      console.warn('[mekai] Translation failed, showing OCR text instead:', err);
     }
 
     const romaji = toRomaji(ocrText);
