@@ -38,27 +38,41 @@ source .venv/bin/activate
 ### 2 — Install dependencies
 
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
-### 3 — Download the OPUS-MT ja→en model (one-time, ~300 MB)
+### 3 — Install PyTorch CPU-only (required for translation)
 
 ```bash
-python main.py --install-translate
+uv pip install torch --index-url https://download.pytorch.org/whl/cpu
 ```
 
-### 4 — (Optional) Pre-download PaddleOCR models
+This installs the CPU-only build (~200 MB instead of ~2.5 GB with CUDA).
+
+### 4 — Install setuptools (required for PaddleOCR)
 
 ```bash
-python main.py --install-ocr
+uv pip install setuptools
+```
+
+### 5 — Download PaddleOCR models (200 MB total, one-time)
+
+```bash
+uv run python main.py --install-ocr
+```
+
+### 6 — Download the OPUS-MT ja→en model (one-time, ~300 MB)
+
+```bash
+uv run python main.py --install-translate
 ```
 
 Models auto-download on first OCR request if you skip this step.
 
-### 5 — Start the server
+### 7 — Start the server
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 Server starts on **http://localhost:5100**. The Mekai frontend detects it

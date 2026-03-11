@@ -31,15 +31,22 @@ if _sys.platform == 'win32':
         pass  # torch not installed; translation features will be unavailable
 
 # ── CPU thread limits ─────────────────────────────────────────
-# Railway containers share CPU cores.  Uncontrolled OpenMP / MKL / PaddlePaddle
-# threading causes severe contention that makes OCR 3-5× slower and triggers
-# the 60-second edge-proxy timeout.  Pinning to 1 thread keeps PaddleOCR fast
-# without competing for the scheduler.
-os.environ.setdefault('OMP_NUM_THREADS', '2')
-os.environ.setdefault('MKL_NUM_THREADS', '2')
-os.environ.setdefault('OPENBLAS_NUM_THREADS', '2')
-os.environ.setdefault('GOTO_NUM_THREADS', '2')
-os.environ.setdefault('FLAGS_num_threads', '2')  # PaddlePaddle flag
+# On Railway (512 MB RAM, 1 shared CPU core) we pin to 2 threads to avoid
+# scheduler contention that makes OCR 3-5× slower and triggers the 60-second
+# edge-proxy timeout.
+#
+# Locally we use min(cpu_count, 4) so inference benefits from available cores
+# without over-subscribing the scheduler.  The RAILWAY_ENVIRONMENT env var is
+# set automatically by Railway; its absence means we are running locally.
+_on_railway = bool(os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RAILWAY_PROJECT_ID'))
+_cpu_count = os.cpu_count() or 1
+_thread_count = str(2 if _on_railway else min(_cpu_count, 4))
+
+os.environ.setdefault('OMP_NUM_THREADS', _thread_count)
+os.environ.setdefault('MKL_NUM_THREADS', _thread_count)
+os.environ.setdefault('OPENBLAS_NUM_THREADS', _thread_count)
+os.environ.setdefault('GOTO_NUM_THREADS', _thread_count)
+os.environ.setdefault('FLAGS_num_threads', _thread_count)  # PaddlePaddle flag
 
 import argparse
 import base64
@@ -119,12 +126,12 @@ def get_paddle_ocr():
     """
     Return the cached PaddleOCR instance, creating it on first call.
 
-    Configuration tuned for manga on Railway (CPU-only, 512 MB RAM):
+    Configuration tuned for manga (CPU-only):
       - lang="japan"                → Japanese recognition model
       - use_angle_cls=True          → classify text angle (vertical manga)
       - use_gpu=False               → CPU-only (Railway has no GPU)
       - enable_mkldnn=True          → Intel MKL-DNN acceleration on CPU
-      - cpu_threads=2               → match OMP_NUM_THREADS env
+      - cpu_threads=_thread_count   → matches OMP_NUM_THREADS (2 on Railway, up to 4 locally)
       - det_limit_side_len=512      → cap detection input size
       - det_db_box_thresh=0.2       → lower threshold catches more manga text
       - det_db_unclip_ratio=1.8     → wider text regions for tight kana spacing
@@ -138,7 +145,7 @@ def get_paddle_ocr():
     if _paddle_ocr is None:
         from paddleocr import PaddleOCR
 
-        log.info("Loading PaddleOCR (japan, CPU-only)…")
+        log.info("Loading PaddleOCR (japan, CPU-only, threads=%s)…", _thread_count)
         try:
             _paddle_ocr = PaddleOCR(
                 lang="japan",
@@ -155,7 +162,7 @@ def get_paddle_ocr():
                 use_space_char=False,       # Japanese has no inter-word spaces
                 # ── Runtime ──
                 enable_mkldnn=True,         # Intel MKL-DNN acceleration on CPU
-                cpu_threads=2,
+                cpu_threads=int(_thread_count),
                 use_mp=False,
             )
             log.info("PaddleOCR ready.")
@@ -205,8 +212,18 @@ def _translate_opus(text: str) -> str:
 
     Serialised via _translate_semaphore so concurrent calls don't double
     PyTorch memory on Railway's constrained containers.
+
+    Requires PyTorch (CPU-only build is sufficient).  If torch is not installed,
+    raises RuntimeError with installation instructions.
     """
-    import torch
+    try:
+        import torch
+    except ImportError:
+        raise RuntimeError(
+            "PyTorch is not installed.  Install the CPU-only build locally with:\n"
+            "  pip install torch --index-url https://download.pytorch.org/whl/cpu\n"
+            "Then restart the server."
+        )
 
     acquired = _translate_semaphore.acquire(timeout=_QUEUE_TIMEOUT_S)
     if not acquired:
@@ -292,6 +309,8 @@ ALLOWED_ORIGINS = list(dict.fromkeys(_REQUIRED_ORIGINS + _extra))
 async def lifespan(app: FastAPI):
     log.info("Mekai API starting — preloading models at startup.")
     log.info("Allowed CORS origins: %s", ALLOWED_ORIGINS)
+    log.info("Running on %s (Railway=%s, CPUs=%d, thread_count=%s)",
+             "Railway" if _on_railway else "local", _on_railway, _cpu_count, _thread_count)
     log.info("CPU thread limits: OMP=%s  MKL=%s  PADDLE=%s",
              os.environ.get('OMP_NUM_THREADS'), os.environ.get('MKL_NUM_THREADS'),
              os.environ.get('FLAGS_num_threads'))
@@ -304,10 +323,18 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("PaddleOCR preload failed: %s", exc)
 
-    # Translation model loads lazily on first /translate request.
-    # This shaves ~10-15s off cold start and ~200 MB off initial RSS,
-    # leaving more headroom for OCR on Railway's 512 MB containers.
-    log.info("Translation model will load on first /translate request.")
+    # Preload translation model on local environments to avoid 60s first-request timeout.
+    # On Railway, load lazily to save ~200 MB RAM and ~10-15s cold start time.
+    if _on_railway:
+        log.info("Translation model will load on first /translate request (Railway mode).")
+    else:
+        try:
+            log.info("Loading OPUS-MT translation model (local mode)...")
+            get_opus_translator()
+            log.info("Translation model ready.")
+        except Exception as exc:
+            log.warning("Translation model preload failed: %s", exc)
+            log.warning("Translation will be unavailable until model is installed.")
 
     _log_memory()
     gc.collect()
@@ -844,15 +871,19 @@ async def translate(request: Request):
 
     import asyncio
 
+    # Use longer timeout locally (60s) for slower CPUs and first-time model loading.
+    # Railway uses 30s since it has the model pre-cached in the Docker image.
+    translate_timeout = 30.0 if _on_railway else 60.0
+
     try:
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(_translate_executor, _translate_opus, text),
-            timeout=30.0,
+            timeout=translate_timeout,
         )
         return {"translatedText": result}
     except asyncio.TimeoutError:
-        log.error("Translation async timeout (30s)")
+        log.error("Translation async timeout (%.0fs)", translate_timeout)
         return JSONResponse(
             status_code=504,
             content={"error": "Translation timed out. Please retry."},

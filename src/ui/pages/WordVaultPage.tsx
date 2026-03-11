@@ -15,11 +15,11 @@ export default function WordVaultPage() {
   const notify = useNotification();
   const [search, setSearch] = useState('');
 
-  const handleSpeak = useCallback((romaji: string) => {
+  const handleSpeak = useCallback((text: string) => {
     try {
-      if ('speechSynthesis' in window && romaji) {
+      if ('speechSynthesis' in window && text) {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(romaji);
+        const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ja-JP';
         utterance.rate = 0.9;
         window.speechSynthesis.speak(utterance);

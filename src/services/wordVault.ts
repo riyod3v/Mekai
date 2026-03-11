@@ -68,6 +68,12 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     // Log only non-sensitive DB error metadata (dev only) — do NOT log the
     // payload, which may contain the user's translated text and OCR regions.
     logger.error('[word_vault] insert error:', { message: error.message, code: error.code });
+
+    // PostgreSQL unique-constraint violation — the user already saved this entry.
+    if (error.code === '23505') {
+      throw new Error('already_saved');
+    }
+
     throw new Error('Failed to save to Word Vault. Please try again.');
   }
 

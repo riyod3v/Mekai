@@ -605,8 +605,13 @@ export default function MangaReaderPage() {
         });
         notify.success('Saved to Word Vault');
       } catch (err: unknown) {
-        logger.error('[handleSaveToVault] error:', err);
-        notify.error('Failed to save to Word Vault. Please try again.');
+        const msg = err instanceof Error ? err.message : '';
+        if (msg === 'already_saved') {
+          notify.info('Already saved to Word Vault');
+        } else {
+          logger.error('[handleSaveToVault] error:', err);
+          notify.error('Failed to save to Word Vault. Please try again.');
+        }
       }
     },
     [mergedOverlays, chapterId, notify],
@@ -979,7 +984,14 @@ export default function MangaReaderPage() {
                 translated: entry.translated,
                 romaji: entry.romaji,
               }).then(() => notify.success('Saved to Word Vault'))
-                .catch(() => notify.error('Failed to save to Word Vault'));
+                .catch((err: unknown) => {
+                  const msg = err instanceof Error ? err.message : '';
+                  if (msg === 'already_saved') {
+                    notify.info('Already saved to Word Vault');
+                  } else {
+                    notify.error('Failed to save to Word Vault');
+                  }
+                });
             } : undefined}
           />
         )}
