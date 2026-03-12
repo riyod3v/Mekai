@@ -32,6 +32,17 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-500 dark:bg-slate-500;
   }
+
+  /* Hide scrollbar on desktop — Swiper handles navigation on mobile */
+  @media (min-width: 640px) {
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+  }
 }
 
 @layer utilities {

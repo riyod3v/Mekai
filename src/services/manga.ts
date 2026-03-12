@@ -132,6 +132,15 @@ export async function deleteManga(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Touch a manga's updated_at timestamp (used to propagate realtime updates). */
+export async function touchManga(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('manga')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ─── Canonical aliases ───────────────────────────────────────
 
 /**

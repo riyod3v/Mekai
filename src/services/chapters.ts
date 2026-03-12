@@ -107,3 +107,12 @@ export async function uploadChapter(
   );
   return { chapter };
 }
+
+/** Touch a chapter's updated_at timestamp (used to propagate realtime updates). */
+export async function touchChapter(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('chapters')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}

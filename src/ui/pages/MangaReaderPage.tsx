@@ -7,13 +7,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { logger } from '@/lib/utils/logger';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, BookOpen, Loader2,
-  Scan, History, X, List, Square, Menu,
+  Scan, History, X, Settings,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { useNotification } from '@/context/NotificationContext';
 
-import { fetchChapterById, fetchChaptersByManga } from '@/services/chapters';
-import { fetchMangaById } from '@/services/manga';
+import { fetchChapterById, fetchChaptersByManga, touchChapter } from '@/services/chapters';
+import { fetchMangaById, touchManga } from '@/services/manga';
 import { fetchChapterTranslations, upsertChapterTranslation, deleteChapterTranslation } from '@/services/chapterTranslations';
 import { addToWordVault } from '@/services/wordVault';
 import { fetchReadingProgress, upsertReadingProgress } from '@/services/readingProgress';
@@ -267,6 +267,12 @@ export default function MangaReaderPage() {
     swiperRef.current = null;
     setSwiperInstance(null);
   }
+
+  // ── Reading direction (RTL = manga-style, LTR = western-style) ───
+  const [readingDirection, setReadingDirection] = useState<'rtl' | 'ltr'>(() =>
+    (localStorage.getItem('mekai-reading-direction') as 'rtl' | 'ltr') ?? 'rtl'
+  );
+  const [readingSubmenuOpen, setReadingSubmenuOpen] = useState(false);
 
   // ── Swiper + UI-overlay state ───────────────────────────────
   const [swiperInstance, setSwiperInstance] = useState<SwiperType | null>(null);
@@ -558,6 +564,10 @@ export default function MangaReaderPage() {
         await queryClient.invalidateQueries({
           queryKey: ['chapter_translations', chapterId],
         });
+
+        // Touch timestamps so realtime propagates to MangaEntryPage viewers
+        touchChapter(chapter.id).catch(() => {});
+        touchManga(chapter.manga_id).catch(() => {});
       }
 
     } catch (err) {
@@ -738,28 +748,34 @@ export default function MangaReaderPage() {
       {/* Center: Chapter title */}
       <div className="flex flex-col items-center">
         <h1 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <span className="text-gray-400 dark:text-gray-500 font-normal mr-1">Ch.{chapter?.chapter_number}</span>
           {chapter?.title || `Chapter ${chapter?.chapter_number}`}
         </h1>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          {readingMode === 'scroll' ? 'Scroll Mode' : 'Page Mode'}
+          {readingMode === 'scroll' ? 'Scroll' : 'Page'} &middot; {readingDirection.toUpperCase()}
+          {readingMode === 'page' && images.length > 0 && (
+            <span className="ml-1.5 font-medium text-gray-400 dark:text-gray-500">
+              &middot; {currentPage + 1} / {images.length}
+            </span>
+          )}
         </p>
       </div>
 
-      {/* Right: Hamburger menu */}
+      {/* Right: Settings menu */}
       <div className="flex items-center gap-2">
-        {/* Hamburger menu */}
+        {/* Settings icon menu */}
         <div className="relative">
           <button
-            onClick={() => setToolsMenuOpen(!toolsMenuOpen)}
+            onClick={() => { setToolsMenuOpen(!toolsMenuOpen); setReadingSubmenuOpen(false); }}
             className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title="Tools"
+            title="Settings"
           >
-            <Menu className="h-4 w-4" />
+            <Settings className="h-4 w-4" />
           </button>
 
           {/* Dropdown menu */}
           {toolsMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+            <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
               {/* OCR mode toggle — hidden for readers on shared manga */}
               {!isReadOnlyViewer && (
               <button
@@ -786,26 +802,84 @@ export default function MangaReaderPage() {
                 Translation History
               </button>
 
-              {/* Reading mode toggle */}
-              <button
-                onClick={() => {
-                  toggleReadingMode();
-                  setToolsMenuOpen(false);
-                }}
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                {readingMode === 'scroll' ? (
-                  <>
-                    <Square className="h-4 w-4" />
-                    Page Mode
-                  </>
-                ) : (
-                  <>
-                    <List className="h-4 w-4" />
-                    Scroll Mode
-                  </>
+              {/* Reading Mode submenu */}
+              <div className="border-t border-gray-200 dark:border-gray-700 mt-1 pt-1">
+                <button
+                  onClick={() => setReadingSubmenuOpen((v) => !v)}
+                  className="flex items-center justify-between w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <span className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Reading Mode
+                  </span>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-150 ${readingSubmenuOpen ? 'rotate-90' : ''}`} />
+                </button>
+
+                {readingSubmenuOpen && (
+                  <div className="px-2 pb-1">
+                    {/* Layout */}
+                    <p className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Layout</p>
+                    {(['scroll', 'page'] as ReadingMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          if (readingMode !== mode) toggleReadingMode();
+                          setToolsMenuOpen(false);
+                          setReadingSubmenuOpen(false);
+                        }}
+                        className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md ${
+                          readingMode === mode
+                            ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 font-medium'
+                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {mode === 'scroll' ? (
+                          // Continuous scroll icon: vertical rectangle with a downward arrow
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="1" width="8" height="10" rx="1" />
+                            <line x1="7" y1="6" x2="7" y2="10" />
+                            <polyline points="5 8.5 7 11 9 8.5" />
+                          </svg>
+                        ) : (
+                          // Page-by-page icon: two side-by-side vertical rectangles (swiped pages)
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="1" y="2" width="5" height="10" rx="1" />
+                            <rect x="8" y="2" width="5" height="10" rx="1" />
+                          </svg>
+                        )}
+                        {mode === 'scroll' ? 'Scroll' : 'Page'}
+                        {readingMode === mode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                      </button>
+                    ))}
+
+                    {/* Direction — only in page mode */}
+                    {readingMode === 'page' && (
+                      <div>
+                        <p className="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Direction</p>
+                        {(['rtl', 'ltr'] as const).map((dir) => (
+                          <button
+                            key={dir}
+                            onClick={() => {
+                              setReadingDirection(dir);
+                              localStorage.setItem('mekai-reading-direction', dir);
+                              setToolsMenuOpen(false);
+                              setReadingSubmenuOpen(false);
+                            }}
+                            className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md ${
+                              readingDirection === dir
+                                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 font-medium'
+                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            {dir === 'rtl' ? '⟵' : '⟶'} {dir.toUpperCase()}
+                            {readingDirection === dir && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
 
               {/* Chapter navigation */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
@@ -917,7 +991,8 @@ export default function MangaReaderPage() {
             <div className="w-full max-w-3xl mx-auto flex flex-col items-center py-4">
               {/* Swiper page viewer — tap to toggle UI overlay */}
               <Swiper
-                dir="rtl"
+                key={readingDirection}
+                dir={readingDirection}
                 initialSlide={currentPage}
                 allowTouchMove={!selectionMode}
                 onSwiper={(s) => {
@@ -955,13 +1030,13 @@ export default function MangaReaderPage() {
                 ))}
               </Swiper>
 
-              {/* Bottom UI bar — page scrubber + Prev/Next — auto-hides on tap */}
+              {/* Bottom UI bar — auto-hides on tap */}
               <div
                 className={`w-full flex flex-col items-center gap-2 px-4 py-3 transition-all duration-300 ${
                   uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
                 }`}
               >
-                {/* Range scrubber — RTL to match manga reading direction */}
+                {/* Range scrubber — mobile only */}
                 {images.length > 1 && (
                   <input
                     type="range"
@@ -972,13 +1047,13 @@ export default function MangaReaderPage() {
                       const idx = Number(e.target.value);
                       swiperInstance?.slideTo(idx);
                     }}
-                    className="w-full max-w-xs accent-indigo-500"
-                    style={{ direction: 'rtl' }}
+                    className="sm:hidden w-full max-w-xs accent-indigo-500"
+                    style={{ direction: readingDirection }}
                     aria-label="Jump to page"
                   />
                 )}
 
-                {/* Prev / counter / Next */}
+                {/* Prev / counter / Next — always visible */}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => { swiperInstance?.slidePrev(); setOcr(null); }}

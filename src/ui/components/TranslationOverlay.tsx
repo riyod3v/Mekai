@@ -362,6 +362,8 @@ export function TranslationOverlay({
     height: `${region.h * 100}%`,
     zIndex: 20,
     boxSizing: 'border-box',
+    // Always LTR — translation text must never inherit the Swiper's RTL direction
+    direction: 'ltr',
   };
 
   return (

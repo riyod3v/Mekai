@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Clock, Upload, ArrowLeft, Hash, Pencil, Trash2, ImageIcon, X } from 'lucide-react';
@@ -13,6 +13,7 @@ import { Modal } from '@/ui/components/Modal';
 import { ChapterUploadForm } from '@/ui/components/ChapterUploadForm';
 import { useAuth } from '@/hooks/useAuth';
 import { useRole } from '@/hooks/useRole';
+import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow, formatDate } from '@/lib/utils/dateUtils';
 import type { ChapterFormData } from '@/types';
 
@@ -77,6 +78,25 @@ export default function MangaEntryPage() {
     enabled: !!id,
     queryFn: () => fetchChaptersByManga(id!),
   });
+
+  // Real-time: invalidate when a translator touches manga/chapters timestamps
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`mekai-entry-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'manga', filter: `id=eq.${id}` },
+        () => { queryClient.invalidateQueries({ queryKey: ['manga', id] }); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'chapters', filter: `manga_id=eq.${id}` },
+        () => { queryClient.invalidateQueries({ queryKey: ['chapters', id] }); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id, queryClient]);
 
   const uploadChapterMutation = useMutation({
     mutationFn: (data: ChapterFormData) => uploadChapter(data, id!),
