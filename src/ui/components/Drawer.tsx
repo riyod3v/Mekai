@@ -21,17 +21,17 @@ export function Drawer({ open, onClose, title, side = 'right', children }: Drawe
 
   const transitions: Record<string, { base: string; open: string; closed: string }> = {
     right: {
-      base: 'fixed inset-y-0 right-0 w-80 max-w-full flex flex-col glass border-l border-white/10 shadow-2xl z-50 overflow-y-auto transition-transform duration-300',
+      base: 'fixed inset-y-0 right-0 w-80 max-w-full flex flex-col glass border-l border-black/10 dark:border-white/10 shadow-2xl z-50 overflow-y-auto transition-transform duration-300',
       open: 'translate-x-0',
       closed: 'translate-x-full',
     },
     left: {
-      base: 'fixed inset-y-0 left-0 w-80 max-w-full flex flex-col glass border-r border-white/10 shadow-2xl z-50 overflow-y-auto transition-transform duration-300',
+      base: 'fixed inset-y-0 left-0 w-80 max-w-full flex flex-col glass border-r border-black/10 dark:border-white/10 shadow-2xl z-50 overflow-y-auto transition-transform duration-300',
       open: 'translate-x-0',
       closed: '-translate-x-full',
     },
     bottom: {
-      base: 'fixed inset-x-0 bottom-0 rounded-t-2xl max-h-[70dvh] flex flex-col glass border-t border-white/10 shadow-2xl z-50 overflow-y-auto transition-transform duration-300',
+      base: 'fixed inset-x-0 bottom-0 rounded-t-2xl max-h-[70dvh] flex flex-col glass border-t border-black/10 dark:border-white/10 shadow-2xl z-50 overflow-y-auto transition-transform duration-300',
       open: 'translate-y-0',
       closed: 'translate-y-full',
     },
@@ -51,11 +51,11 @@ export function Drawer({ open, onClose, title, side = 'right', children }: Drawe
 
       {/* Panel */}
       <div className={clsx(t.base, open ? t.open : t.closed)}>
-        <div className="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
-          {title && <h2 className="font-semibold text-sm text-gray-100">{title}</h2>}
+        <div className="flex items-center justify-between p-4 border-b border-black/10 dark:border-white/10 shrink-0">
+          {title && <h2 className="font-semibold text-sm text-slate-800 dark:text-gray-100">{title}</h2>}
           <button
             onClick={onClose}
-            className="ml-auto p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="ml-auto p-1 rounded-lg text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>

@@ -9,7 +9,7 @@ Mekai is a production-grade manga reader + translator platform.
 - Frontend: React 19 + Vite 7 + TypeScript + Tailwind CSS v4
 - Data fetching: TanStack Query v5
 - Backend: Supabase (Postgres + Storage + Auth + Realtime)
-- OCR/Translation: Python FastAPI microservice (PaddleOCR + OPUS-MT)
+- OCR/Translation: Python FastAPI microservice (manga-ocr local / PaddleOCR Railway + OPUS-MT)
 - Frontend deployment: Vercel (SPA rewrite via `vercel.json`)
 - API deployment: Railway Free Tier (strict 512 MB RAM limit)
 - Content format: Manga chapters uploaded as CBZ (zip of images)
@@ -35,6 +35,7 @@ All core features are complete and production-ready:
 | CBZ extraction in-browser (JSZip) | ✅ Done |
 | Selective OCR (user drag-selects speech bubble) | ✅ Done |
 | PaddleOCR via Python FastAPI on Railway | ✅ Done |
+| manga-ocr (kha-white) for local development | ✅ Done |
 | OPUS-MT translation (ja→en) via Python FastAPI | ✅ Done |
 | Romaji generation (wanakana, client-side) | ✅ Done |
 | Translation overlays on manga pages | ✅ Done |
@@ -103,7 +104,7 @@ Do not create new buckets without explicit instruction.
 Do not reintroduce:
 - `tesseract.js` (removed: poor manga accuracy, runs in browser)
 - `mymemory` translation API (removed: unreliable)
-- `manga-ocr` PyTorch model (removed: ~444 MB, exceeds Railway RAM)
+- `manga-ocr` on Railway (removed: ~444 MB, exceeds Railway RAM; used locally only)
 - `Flask` (replaced by FastAPI)
 
 ---

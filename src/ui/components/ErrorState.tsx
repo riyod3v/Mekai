@@ -14,7 +14,7 @@ export function ErrorState({
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-16 px-4 text-center">
       <AlertTriangle className="h-12 w-12 text-red-400" />
-      <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-gray-100">{title}</h2>
       <p className="text-sm text-gray-400 max-w-sm">{message}</p>
       {retry && (
         <button

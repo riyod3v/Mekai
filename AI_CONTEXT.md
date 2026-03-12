@@ -33,7 +33,7 @@ Supabase Backend
       |
       v
 Python OCR/Translation API (FastAPI)
-(PaddleOCR + OPUS-MT — Railway)
+(Local: manga-ocr + OPUS-MT | Railway: PaddleOCR + OPUS-MT)
 ```
 
 ### Important Architectural Rules
@@ -69,7 +69,9 @@ POST /ocr
 }
 ```
 
-6. The OCR API (PaddleOCR) processes the image and returns extracted text:
+6. The OCR API processes the image and returns extracted text:
+   - **Local:** manga-ocr (kha-white/manga-ocr) — PyTorch ViT encoder-decoder trained on manga
+   - **Railway:** PaddleOCR (CPU-only) — fits within 512 MB RAM limit
 
 ```json
 {
@@ -210,10 +212,10 @@ Settings (mode, direction) are persisted to `localStorage`. Reading progress (la
 
 ```
 py-mekai-api/
-|-- main.py            <- FastAPI server (PaddleOCR + OPUS-MT)
+|-- main.py            <- FastAPI server (manga-ocr local / PaddleOCR Railway + OPUS-MT)
 |-- Dockerfile         <- Railway deployment image
-|-- railwayReq.txt     <- Railway deployment deps
-|-- localReq.txt       <- Local development deps (all-in-one)
+|-- railwayReq.txt     <- Railway deployment deps (PaddleOCR)
+|-- localReq.txt       <- Local development deps (manga-ocr)
 |-- railway.json
 |-- Procfile
 +-- README.md
@@ -238,7 +240,8 @@ py-mekai-api/
 Optimizations in place:
 
 - **CPU-only PyTorch** (~200 MB vs ~2.5 GB with CUDA)
-- **PaddleOCR** replaces the heavier manga-ocr (~170 MB vs ~444 MB)
+- **PaddleOCR on Railway** replaces the heavier manga-ocr (~170 MB vs ~444 MB)
+- **manga-ocr locally** for superior manga OCR accuracy (no Railway RAM constraint)
 - **CPU threads pinned to 2** on Railway to prevent scheduler contention
 - **OCR requests serialized** via semaphore — one inference at a time
 - **Translation model loaded lazily** on first request (saves ~200 MB cold-start RAM)
@@ -258,8 +261,9 @@ The following systems were **intentionally removed** and must **not** be reintro
 | Tesseract.js | Poor accuracy for manga, runs in browser |
 | MyMemory translation | Reliability issues, API limitations |
 | Apify OCR actor | API limitations |
-| manga-ocr (PyTorch) | ~444 MB model, exceeds Railway 512 MB RAM limit |
 | Flask | Replaced by FastAPI for async support |
+
+> **Note:** manga-ocr (kha-white) is now used for **local development** only. It is still too large (~444 MB) for Railway’s 512 MB RAM limit. Railway continues to use PaddleOCR.
 
 ---
 
@@ -269,8 +273,9 @@ AI agents must follow these rules:
 
 1. **Do not add OCR libraries to the browser.**
 2. **Do not run OCR inside Vercel functions.**
-3. **Do not reintroduce removed systems** (Tesseract.js, MyMemory, Apify, manga-ocr).
-4. **Avoid duplicate service layers.**
+3. **Do not reintroduce removed systems** (Tesseract.js, MyMemory, Apify).
+4. **Do not add manga-ocr to Railway** — it exceeds the 512 MB RAM limit. manga-ocr is local-only.
+5. **Avoid duplicate service layers.**
 5. If modifying Supabase queries, **preserve RLS compatibility**.
 6. **Avoid breaking existing file paths.**
 7. Maintain separation: `ui/components` / `ui/pages` / `services` / `lib` / `hooks` / `context`

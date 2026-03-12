@@ -101,7 +101,7 @@ c:/Users/Administrator/Documents/Mekai/
 | [`src/lib/utils/browserAPI.ts`](src/lib/utils/browserAPI.ts) | Main OCR+translate orchestrator (`ocrAndTranslate()`) |
 | [`src/ui/components/OCRSelectionLayer.tsx`](src/ui/components/OCRSelectionLayer.tsx) | Mouse drag UI to select a page region |
 | [`src/ui/pages/MangaReaderPage.tsx`](src/ui/pages/MangaReaderPage.tsx) | Calls `ocrAndTranslate()`, saves result, renders overlays |
-| [`py-mekai-api/main.py`](py-mekai-api/main.py) | Python FastAPI server — `/ocr` (PaddleOCR) + `/translate` (OPUS-MT) |
+| [`py-mekai-api/main.py`](py-mekai-api/main.py) | Python FastAPI server — `/ocr` (manga-ocr local / PaddleOCR Railway) + `/translate` (OPUS-MT) |
 
 ### Current active OCR flow
 
@@ -113,7 +113,7 @@ User drag-selects a region
       ├─ ocr.ts/hasInkContent()      ← pre-flight Otsu binarization check
       ├─ isMangaOcrAvailable()        ← probe /ocr/health (30 s cache)
       ├─ ocr.ts/cropToDataUrl()       ← crop + base64 encode region
-      ├─ localMangaOcr(base64)        ← POST /ocr → PaddleOCR Python model
+      ├─ localMangaOcr(base64)        ← POST /ocr → manga-ocr (local) or PaddleOCR (Railway)
       ├─ translateJapaneseToEnglishWithProvider()
       │    └─ localTranslateJaToEn()  ← POST /translate → OPUS-MT
       └─ toRomaji()                   ← client-side romanisation

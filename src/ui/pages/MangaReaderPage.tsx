@@ -812,7 +812,8 @@ export default function MangaReaderPage() {
               </button>
               )}
 
-              {/* History toggle */}
+              {/* History toggle — hidden for read-only viewers (readers on shared manga) */}
+              {!isReadOnlyViewer && (
               <button
                 onClick={() => {
                   setHistoryOpen(!historyOpen);
@@ -823,6 +824,7 @@ export default function MangaReaderPage() {
                 <History className="h-4 w-4" />
                 Translation History
               </button>
+              )}
 
               {/* Reading Mode submenu */}
               <div className="border-t border-gray-200 dark:border-gray-700 mt-1 pt-1">

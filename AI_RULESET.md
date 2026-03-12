@@ -55,7 +55,9 @@ Backend:
 
 OCR/Translation service:
 
-- Python FastAPI microservice (PaddleOCR + OPUS-MT)
+- Python FastAPI microservice
+- Local: manga-ocr (kha-white/manga-ocr) + OPUS-MT
+- Railway: PaddleOCR (CPU-only) + OPUS-MT
 - Deployed on Railway Free Tier (512 MB RAM limit)
 
 ## Railway Memory Constraint
@@ -71,7 +73,7 @@ Agents must NOT add:
 - Tesseract.js
 - MyMemory API
 - Apify OCR actor
-- manga-ocr (PyTorch — exceeds Railway 512 MB RAM budget)
+- manga-ocr on Railway (PyTorch — exceeds Railway 512 MB RAM budget; local-only)
 - Serverless OCR (Vercel functions)
 - Flask (replaced by FastAPI)
 
@@ -223,7 +225,7 @@ OCR images must:
 - Pass ink pre-flight check (`hasInkContent`)
 - Be encoded as base64
 - Be sent to the Python API (`POST /ocr`)
-- Be processed by PaddleOCR on the server
+- Be processed by manga-ocr (local) or PaddleOCR (Railway) on the server
 
 OCR must never run in browser or Vercel functions.
 

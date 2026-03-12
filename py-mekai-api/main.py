@@ -1,8 +1,10 @@
-# Mekai API — PaddleOCR + OPUS-MT backend
+# Mekai API — Manga OCR + OPUS-MT backend
 #
-# Replaces the heavyweight manga-ocr server with CPU-only PaddlePaddle OCR
-# and OPUS-MT (Helsinki-NLP/opus-mt-ja-en) for high-quality ja→en translation.
-# Designed to run within Railway's 500 MB RAM limit.
+# Dual OCR engine:
+#   Local   → manga-ocr (kha-white/manga-ocr) — PyTorch ViT, best manga accuracy
+#   Railway → PaddleOCR (CPU-only) — fits within 512 MB RAM limit
+#
+# Translation: OPUS-MT (Helsinki-NLP/opus-mt-ja-en) ja→en on both environments.
 #
 # Endpoints (match the existing frontend contract):
 #   GET  /               — root health check
@@ -13,9 +15,9 @@
 #
 # Quick start (local):
 #   pip install -r localReq.txt
-#   python main.py --install-ocr         # one-time PaddleOCR model download
-#   python main.py --install-translate   # one-time OPUS-MT model download (~300 MB)
-#   python main.py                       # start on :5100
+#   python main.py --install-manga-ocr   # optional: pre-download manga-ocr model (~400 MB)
+#   python main.py --install-translate    # one-time OPUS-MT model download (~300 MB)
+#   python main.py                        # start on :5100
 
 # Fix for PyTorch Windows shared memory issue - MUST be at the very top
 import os
@@ -92,6 +94,7 @@ logging.getLogger("ppocr").setLevel(logging.WARNING)
 # ─── Lazy-loaded singletons ───────────────────────────────────
 
 _paddle_ocr: Optional[object] = None
+_manga_ocr_model: Optional[object] = None
 _opus_tokenizer: Optional[object] = None
 _opus_model: Optional[object] = None
 
@@ -111,6 +114,17 @@ _QUEUE_TIMEOUT_S = 30  # seconds to wait for a slot before returning 503
 # unbounded thread creation and guarantees natural FIFO serialisation.
 _ocr_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ocr")
 _translate_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="translate")
+
+# ── OCR engine selection ──────────────────────────────────────
+# Local: prefer manga-ocr (kha-white) for superior manga accuracy.
+# Railway: use PaddleOCR (manga-ocr's ~400 MB model exceeds 512 MB RAM budget).
+_use_manga_ocr = False
+if not _on_railway:
+    try:
+        import manga_ocr as _manga_ocr_module  # noqa: F401 — availability check only
+        _use_manga_ocr = True
+    except ImportError:
+        pass  # manga-ocr not installed — will fall back to PaddleOCR
 
 
 def _log_memory():
@@ -173,6 +187,37 @@ def get_paddle_ocr():
             raise
         gc.collect()
     return _paddle_ocr
+
+
+def get_manga_ocr():
+    """
+    Return the cached manga-ocr model, creating it on first call.
+
+    manga-ocr (kha-white/manga-ocr) is a PyTorch ViT encoder-decoder
+    trained specifically on Japanese manga text.  It reads the entire
+    cropped image and outputs text directly — no separate detection step.
+
+    The model (~400 MB) auto-downloads from HuggingFace Hub on first use.
+    A warm-up inference is run on a dummy image to trigger lazy JIT
+    compilation so the first real request is fast.
+    """
+    global _manga_ocr_model
+    if _manga_ocr_model is None:
+        from manga_ocr import MangaOcr
+
+        log.info("Loading manga-ocr model (threads=%s)…", _thread_count)
+        _manga_ocr_model = MangaOcr()
+
+        # Warm up — first inference is 2-3× slower due to lazy JIT compilation
+        log.info("Warming up manga-ocr (dummy inference)…")
+        _dummy = Image.new("RGB", (64, 64), (255, 255, 255))
+        _ = _manga_ocr_model(_dummy)
+        del _dummy
+
+        log.info("manga-ocr ready.")
+        _log_memory()
+        gc.collect()
+    return _manga_ocr_model
 
 
 def get_opus_translator():
@@ -279,6 +324,16 @@ def predownload_paddle_models() -> None:
     log.info("PaddleOCR models cached.")
 
 
+def predownload_manga_ocr_model() -> None:
+    """
+    Pre-download the manga-ocr model (~400 MB) so it is cached locally.
+    Called via `python main.py --install-manga-ocr`.
+    """
+    log.info("Pre-downloading manga-ocr model (~400 MB). Please wait…")
+    get_manga_ocr()
+    log.info("manga-ocr model cached successfully.")
+
+
 # ─── CORS configuration ──────────────────────────────────────
 
 # Origins that are always allowed regardless of env vars
@@ -312,19 +367,26 @@ ALLOWED_ORIGINS = list(dict.fromkeys(_REQUIRED_ORIGINS + _extra))
 async def lifespan(app: FastAPI):
     log.info("Mekai API starting — preloading models at startup.")
     log.info("Allowed CORS origins: %s", ALLOWED_ORIGINS)
-    log.info("Running on %s (Railway=%s, CPUs=%d, thread_count=%s)",
-             "Railway" if _on_railway else "local", _on_railway, _cpu_count, _thread_count)
+    log.info("Running on %s (Railway=%s, CPUs=%d, threads=%s, OCR=%s)",
+             "Railway" if _on_railway else "local", _on_railway, _cpu_count, _thread_count,
+             "manga-ocr" if _use_manga_ocr else "PaddleOCR")
     log.info("CPU thread limits: OMP=%s  MKL=%s  PADDLE=%s",
              os.environ.get('OMP_NUM_THREADS'), os.environ.get('MKL_NUM_THREADS'),
              os.environ.get('FLAGS_num_threads'))
 
-    # Preload PaddleOCR so the first /ocr request doesn't timeout
-    try:
-        log.info("Loading PaddleOCR model...")
-        get_paddle_ocr()
-        log.info("PaddleOCR ready.")
-    except Exception as exc:
-        log.warning("PaddleOCR preload failed: %s", exc)
+    # Preload OCR engine so the first /ocr request doesn't timeout
+    if _use_manga_ocr:
+        try:
+            log.info("Loading manga-ocr model (local mode)…")
+            get_manga_ocr()
+        except Exception as exc:
+            log.warning("manga-ocr preload failed: %s — will retry on first request", exc)
+    else:
+        try:
+            log.info("Loading PaddleOCR model…")
+            get_paddle_ocr()
+        except Exception as exc:
+            log.warning("PaddleOCR preload failed: %s", exc)
 
     # Preload translation model on local environments to avoid 60s first-request timeout.
     # On Railway, load lazily to save ~200 MB RAM and ~10-15s cold start time.
@@ -757,6 +819,64 @@ def _run_paddle_ocr(img: Image.Image) -> str:
         _ocr_semaphore.release()
 
 
+def _run_manga_ocr(img: Image.Image) -> str:
+    """
+    Run manga-ocr on a pre-cropped speech bubble image.
+
+    manga-ocr reads the entire crop directly — no detection or column
+    sorting needed.  The model handles its own internal preprocessing
+    (resize to 224×224, normalise pixel values).
+
+    Image is capped at 1920px and tiny crops are upscaled to 96px.
+    Serialised via _ocr_semaphore.
+    """
+    t0 = time.monotonic()
+
+    acquired = _ocr_semaphore.acquire(timeout=_QUEUE_TIMEOUT_S)
+    if not acquired:
+        raise TimeoutError(
+            "OCR queue full — another request is still processing. "
+            "Please retry in a few seconds."
+        )
+
+    try:
+        mocr = get_manga_ocr()
+
+        log.info("manga-ocr input: %dx%d", img.width, img.height)
+
+        # Cap large images — manga-ocr resizes internally to 224×224
+        # but large inputs waste memory during PIL → tensor conversion
+        max_dim = max(img.width, img.height)
+        min_dim = min(img.width, img.height)
+
+        if max_dim > 1920:
+            scale = 1920 / max_dim
+            img = img.resize(
+                (max(int(img.width * scale), 1), max(int(img.height * scale), 1)),
+                Image.LANCZOS,
+            )
+            log.info("Downscaled to %dx%d", img.width, img.height)
+        elif min_dim < 96:
+            scale = 96 / min_dim
+            img = img.resize(
+                (int(img.width * scale), int(img.height * scale)),
+                Image.LANCZOS,
+            )
+            log.info("Upscaled tiny crop to %dx%d", img.width, img.height)
+
+        text = mocr(img)
+
+        elapsed = time.monotonic() - t0
+        log.info("manga-ocr finished in %.1fs: %r", elapsed, text)
+        _log_memory()
+
+        # Apply same NFKC normalisation + cleanup as PaddleOCR path
+        return _clean_ocr_text(text) if text else ""
+
+    finally:
+        _ocr_semaphore.release()
+
+
 # ─── Health endpoints ─────────────────────────────────────────
 
 
@@ -769,13 +889,8 @@ async def root():
 @app.get("/ocr/health")
 async def ocr_health():
     """Probe: returns 200 when OCR service is available (models load on demand)."""
-    # On Windows, we don't pre-load PaddleOCR to avoid shm.dll issues
-    if os.name == 'nt':
-        return {
-            "status": "ok", 
-            "note": "PaddleOCR loads on first OCR request (Windows compatibility mode)"
-        }
-    return {"status": "ok", "note": "Models load on first OCR request"}
+    engine = "manga-ocr" if _use_manga_ocr else "paddleocr"
+    return {"status": "ok", "engine": engine}
 
 
 @app.get("/translate/health")
@@ -853,13 +968,15 @@ async def ocr(
             )
 
     try:
-        # Run OCR in a dedicated single-thread executor with a 50-second
-        # timeout — leaves ~10s headroom before Railway's 60s edge proxy
-        # timeout.  The dedicated executor prevents unbounded thread creation.
+        # Run OCR in a dedicated single-thread executor.
+        # Railway: 50s timeout (leaves ~10s headroom before 60s edge proxy timeout).
+        # Local manga-ocr: 120s (first call may download the ~400 MB model).
         loop = asyncio.get_running_loop()
+        ocr_fn = _run_manga_ocr if _use_manga_ocr else _run_paddle_ocr
+        ocr_timeout = 120.0 if _use_manga_ocr else 50.0
         text = await asyncio.wait_for(
-            loop.run_in_executor(_ocr_executor, _run_paddle_ocr, img),
-            timeout=50.0,
+            loop.run_in_executor(_ocr_executor, ocr_fn, img),
+            timeout=ocr_timeout,
         )
         del img
         return {"text": text}
@@ -900,7 +1017,8 @@ async def ocr_debug(file: UploadFile = File(...)):
 
         log.info("OCR debug request received")
 
-        text = _run_paddle_ocr(img)
+        ocr_fn = _run_manga_ocr if _use_manga_ocr else _run_paddle_ocr
+        text = ocr_fn(img)
         del img
 
         return {
@@ -1028,6 +1146,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Pre-download PaddleOCR models (used in Dockerfile), then exit.",
     )
+    parser.add_argument(
+        "--install-manga-ocr",
+        action="store_true",
+        help="Pre-download the manga-ocr model (~400 MB), then exit.",
+    )
     args = parser.parse_args()
 
     if args.install_translate:
@@ -1036,6 +1159,10 @@ if __name__ == "__main__":
 
     if args.install_ocr:
         predownload_paddle_models()
+        sys.exit(0)
+
+    if args.install_manga_ocr:
+        predownload_manga_ocr_model()
         sys.exit(0)
 
     port = int(os.environ.get("PORT", args.port))

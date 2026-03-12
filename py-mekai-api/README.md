@@ -1,8 +1,12 @@
-# Mekai API — Lightweight PaddleOCR Backend
+# Mekai API — Manga OCR + Translation Backend
 
 Manga OCR + translation microservice for the Mekai platform.
-Designed to run within **Railway's 512 MB RAM limit** using CPU-only
-PaddlePaddle + PaddleOCR instead of the heavier PyTorch/manga-ocr stack.
+
+**Dual OCR engine:**
+- **Local:** manga-ocr (kha-white/manga-ocr) — PyTorch ViT, best manga accuracy
+- **Railway:** PaddleOCR (CPU-only) — fits within 512 MB RAM limit
+
+Translation: OPUS-MT (Helsinki-NLP/opus-mt-ja-en) ja→en on both environments.
 
 > **Python 3.10 – 3.12 required.** Python 3.13+ may break some dependencies.
 
@@ -10,7 +14,8 @@ PaddlePaddle + PaddleOCR instead of the heavier PyTorch/manga-ocr stack.
 
 | Service | Technology | Notes |
 |---------|-----------|-------|
-| **OCR** | [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (lang=japan) | CPU-only, ~90 MB wheel + ~80 MB models |
+| **OCR (local)** | [manga-ocr](https://github.com/kha-white/manga-ocr) | PyTorch ViT, ~400 MB model, best manga accuracy |
+| **OCR (Railway)** | [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (lang=japan) | CPU-only, ~90 MB wheel + ~80 MB models |
 | **Translation** | [OPUS-MT](https://huggingface.co/Helsinki-NLP/opus-mt-ja-en) (MarianMT) ja→en | ~300 MB model via HuggingFace transformers |
 
 ---
@@ -41,7 +46,7 @@ source .venv/bin/activate
 uv pip install -r localReq.txt
 ```
 
-This installs everything needed locally: FastAPI, PaddleOCR, PyTorch, numpy, etc.
+This installs everything needed locally: FastAPI, manga-ocr, PyTorch, numpy, etc.
 
 > **Tip:** For a smaller PyTorch install (~200 MB instead of ~2.5 GB), install
 > CPU-only torch first, then the rest:
@@ -50,11 +55,13 @@ This installs everything needed locally: FastAPI, PaddleOCR, PyTorch, numpy, etc
 > uv pip install -r localReq.txt
 > ```
 
-### 3 — Download PaddleOCR models (200 MB total, one-time)
+### 3 — (Optional) Pre-download manga-ocr model (~400 MB)
 
 ```bash
-uv run python main.py --install-ocr
+uv run python main.py --install-manga-ocr
 ```
+
+The model auto-downloads on first OCR request if you skip this step.
 
 ### 4 — Download the OPUS-MT ja→en model (one-time, ~300 MB)
 
@@ -132,13 +139,14 @@ VITE_RAILWAY_SERVER_URL=https://mekai-production.up.railway.app
 ```
 ┌─────────────────────────┐         ┌──────────────────────────┐
 │  React app (Vite)       │──POST──▶│  main.py :5100           │
-│  localhost:5173          │         │    /ocr       PaddleOCR  │
+│  localhost:5173          │         │    /ocr       manga-ocr  │
 │                          │◀─JSON──│    /translate  OPUS-MT    │
 └─────────────────────────┘         └──────────────────────────┘
 ```
 
 - Frontend probes `/ocr/health` and `/translate/health` on startup.
-- If available → uses PaddleOCR for recognition and OPUS-MT for translation.
+- Locally, manga-ocr is used for OCR (superior manga accuracy).
+- On Railway, PaddleOCR is used instead (fits within 512 MB RAM).
 - If unavailable → shows error (no browser-side fallbacks).
 - In production, set `VITE_RAILWAY_SERVER_URL` to the Railway deployment URL (already set in `.env`).
 
@@ -209,17 +217,12 @@ python main.py
 
 ## Memory footprint comparison
 
-| Component | Old (manga-ocr) | New (PaddleOCR + OPUS-MT) |
-|-----------|-----------------|---------------------------|
-| ML framework | PyTorch full (~2.5 GB disk) | PaddlePaddle (~90 MB) + PyTorch CPU-only (~200 MB) |
-| OCR model | manga-ocr (~400 MB disk) | PaddleOCR japan (~80 MB disk) |
-| Translation | manga-ocr (same model) | OPUS-MT (~300 MB disk) |
-| **Docker image** | **~7+ GB** | **~3–3.5 GB** (within Railway 4 GB limit) |
-| **Total RSS** | **~600–800 MB** (OOM on Railway) | **~400–500 MB** |
+| Component | PaddleOCR (Railway) | manga-ocr (Local) |
+|-----------|---------------------|--------------------|
+| ML framework | PaddlePaddle (~90 MB) + PyTorch CPU (~200 MB) | PyTorch (~200 MB CPU / ~2.5 GB full) |
+| OCR model | PaddleOCR japan (~80 MB) | manga-ocr ViT (~400 MB) |
+| Translation | OPUS-MT (~300 MB) | OPUS-MT (~300 MB) |
+| **Total RSS** | **~400–500 MB** | **~600–800 MB** |
 
-> **Known issue:** PyTorch is still required for OPUS-MT translation.
-> A future improvement could swap to a lighter translation engine
-> (e.g. CTranslate2 or Argos Translate) to eliminate the PyTorch dependency.
->
-> **Total runtime RSS must stay below 512 MB** (Railway Free Tier hard limit).
-> Adding new models or dependencies requires evaluating their memory impact.
+> **Railway:** PaddleOCR is used to stay within the 512 MB RAM limit.
+> **Local:** manga-ocr provides significantly better accuracy for manga text.

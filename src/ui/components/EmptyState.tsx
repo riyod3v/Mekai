@@ -13,8 +13,8 @@ export function EmptyState({
 }: Props) {
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-20 px-4 text-center">
-      <BookX className="h-14 w-14 text-gray-600" />
-      <h2 className="text-base font-semibold text-gray-300">{title}</h2>
+      <BookX className="h-14 w-14 text-slate-400 dark:text-gray-600" />
+      <h2 className="text-base font-semibold text-slate-700 dark:text-gray-300">{title}</h2>
       <p className="text-sm text-gray-500 max-w-xs">{message}</p>
       {action && (
         <button

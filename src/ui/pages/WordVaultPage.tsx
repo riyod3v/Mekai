@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/utils/logger';
 import { Vault, Trash2, Search, Volume2 } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
@@ -14,6 +15,23 @@ export default function WordVaultPage() {
   const queryClient = useQueryClient();
   const notify = useNotification();
   const [search, setSearch] = useState('');
+
+  // Real-time sync: invalidate when the user's word_vault rows change
+  // (covers saves made from MangaReaderPage in another tab, cross-device, etc.)
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`word-vault-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'word_vault', filter: `user_id=eq.${user.id}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['word-vault'] });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, queryClient]);
 
   const handleSpeak = useCallback((text: string) => {
     try {
@@ -36,6 +54,8 @@ export default function WordVaultPage() {
     queryKey: ['word-vault', user?.id],
     enabled: !!user,
     queryFn: () => fetchWordVault(),
+    staleTime: 0,         // always refetch on mount so vault is up-to-date
+    refetchOnMount: true, // ensure data fetches even when navigating from reader
   });
 
   const deleteMutation = useMutation({
@@ -59,7 +79,7 @@ export default function WordVaultPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Vault className="h-6 w-6 text-indigo-400" />
             Word Vault
           </h1>
@@ -76,7 +96,7 @@ export default function WordVaultPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="pl-9 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-gray-100 placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors w-56"
+            className="pl-9 pr-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/15 text-slate-900 dark:text-gray-100 placeholder:text-slate-400 dark:placeholder:text-gray-500 text-sm focus:outline-none focus:border-indigo-500 transition-colors w-56"
           />
         </div>
       </div>
@@ -98,11 +118,11 @@ export default function WordVaultPage() {
           {filtered.map((entry) => (
             <div
               key={entry.id}
-              className="glass rounded-xl border border-white/10 p-4 flex flex-col gap-2 group hover:border-indigo-500/30 transition-all"
+              className="glass rounded-xl p-4 flex flex-col gap-2 group hover:border-indigo-500/30 transition-all"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-base text-gray-100 break-words leading-snug">
+                  <p className="font-mono text-base text-slate-800 dark:text-gray-100 break-words leading-snug">
                     {entry.original}
                   </p>
                 </div>
@@ -110,7 +130,7 @@ export default function WordVaultPage() {
                   {entry.romaji && (
                     <button
                       onClick={() => handleSpeak(entry.romaji!)}
-                      className="p-1.5 rounded-lg text-gray-600 hover:text-indigo-400 hover:bg-indigo-400/10 opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-1.5 rounded-lg text-slate-400 dark:text-gray-600 hover:text-indigo-400 hover:bg-indigo-400/10 opacity-0 group-hover:opacity-100 transition-all"
                       title="Pronounce"
                     >
                       <Volume2 className="h-3.5 w-3.5" />
@@ -119,7 +139,7 @@ export default function WordVaultPage() {
                   <button
                     onClick={() => deleteMutation.mutate(entry.id)}
                     disabled={deleteMutation.isPending}
-                    className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
+                    className="p-1.5 rounded-lg text-slate-400 dark:text-gray-600 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
                     title="Remove from vault"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -128,14 +148,14 @@ export default function WordVaultPage() {
               </div>
 
               {entry.translated && (
-                <p className="text-sm text-green-300 break-words">{entry.translated}</p>
+                <p className="text-sm text-green-600 dark:text-green-300 break-words">{entry.translated}</p>
               )}
 
               {entry.romaji && (
-                <p className="text-xs text-blue-300 italic">{entry.romaji}</p>
+                <p className="text-xs text-blue-600 dark:text-blue-300 italic">{entry.romaji}</p>
               )}
 
-              <p className="text-xs text-gray-600 mt-auto pt-2 border-t border-white/5">
+              <p className="text-xs text-slate-500 dark:text-gray-600 mt-auto pt-2 border-t border-slate-100 dark:border-white/5">
                 {formatDate(entry.created_at)}
               </p>
             </div>
