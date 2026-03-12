@@ -238,7 +238,7 @@ The OCR microservice is a standalone FastAPI application in `py-mekai-api/`.
 |----------|---------|
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key |
-| `VITE_OCR_API_URL` | Python OCR service URL (production Railway URL) |
+| `VITE_RAILWAY_SERVER_URL` | Python OCR service URL (production Railway URL) |
 | `VITE_LOCAL_API_URL` | Local development API URL (default: `http://localhost:5100`) |
 
 ### Python API (Railway)
@@ -260,7 +260,7 @@ The React SPA is deployed to [Vercel](https://vercel.com). Configuration is in `
 npm run build     # Output in dist/
 ```
 
-Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_OCR_API_URL` as environment variables on Vercel.
+Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_RAILWAY_SERVER_URL` as environment variables on Vercel.
 
 ### Python API — Railway (Free Tier)
 
@@ -300,7 +300,7 @@ Edit `.env.local`:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_LOCAL_API_URL=http://localhost:5100
-VITE_OCR_API_URL=https://mekai-production.up.railway.app
+VITE_RAILWAY_SERVER_URL=https://mekai-production.up.railway.app
 ```
 
 Find Supabase values in **Supabase Dashboard > Project Settings > API**.
@@ -453,4 +453,4 @@ npm run build
 
 Output is in `dist/`. Deploy to Vercel (recommended), Netlify, Cloudflare Pages, or any static host.
 
-Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_OCR_API_URL` as environment variables on the hosting platform.
+Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_RAILWAY_SERVER_URL` as environment variables on the hosting platform.

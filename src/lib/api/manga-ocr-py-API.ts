@@ -7,7 +7,7 @@
  *
  * URL selection is based on the current hostname at runtime:
  *   - localhost / 127.0.0.1  → VITE_LOCAL_API_URL (default: http://localhost:5100)
- *   - any other hostname     → VITE_OCR_API_URL   (Railway production)
+ *   - any other hostname     → VITE_RAILWAY_SERVER_URL   (Railway production)
  *
  * This avoids probing localhost in production, which browsers block via CORS
  * before any fallback logic can execute.
@@ -26,7 +26,7 @@ const _isLocal =
  */
 const BASE_API_URL: string = _isLocal
   ? ((import.meta.env.VITE_LOCAL_API_URL as string | undefined) ?? 'http://localhost:5100')
-  : ((import.meta.env.VITE_OCR_API_URL as string | undefined) ?? '');
+  : ((import.meta.env.VITE_RAILWAY_SERVER_URL as string | undefined) ?? '');
 /** How long (ms) to wait for a health probe before treating it as unavailable.
  *  Raised to 8 s so a localhost cold-start (model loading) doesn't falsely
  *  report the server as unavailable after just 3 s. */

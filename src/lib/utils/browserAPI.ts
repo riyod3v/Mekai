@@ -72,7 +72,7 @@ export async function ocrAndTranslate(
     throw new Error(
       isLocal
         ? 'manga-ocr is not running. Start py-mekai-api/main.py first.'
-        : 'OCR service is unreachable. Check that VITE_OCR_API_URL is set and Railway is running.',
+        : 'OCR service is unreachable. Check that VITE_RAILWAY_SERVER_URL is set and Railway is running.',
     );
   }
 

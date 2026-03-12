@@ -193,7 +193,7 @@ Two reading modes are supported:
 |----------|---------|
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key |
-| `VITE_OCR_API_URL` | Python OCR service URL (production) |
+| `VITE_RAILWAY_SERVER_URL` | Python OCR service URL (production) |
 | `VITE_LOCAL_API_URL` | Local dev API URL (default: `http://localhost:5100`) |
 
 ### Python API (Railway)

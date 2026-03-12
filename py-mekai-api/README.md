@@ -122,7 +122,7 @@ Point the frontend at a remote/staging Railway deployment:
 
 ```
 # .env.local
-VITE_OCR_API_URL=https://mekai-production.up.railway.app
+VITE_RAILWAY_SERVER_URL=https://mekai-production.up.railway.app
 ```
 
 ---
@@ -140,7 +140,7 @@ VITE_OCR_API_URL=https://mekai-production.up.railway.app
 - Frontend probes `/ocr/health` and `/translate/health` on startup.
 - If available → uses PaddleOCR for recognition and OPUS-MT for translation.
 - If unavailable → shows error (no browser-side fallbacks).
-- In production, set `VITE_OCR_API_URL` to the Railway deployment URL (already set in `.env`).
+- In production, set `VITE_RAILWAY_SERVER_URL` to the Railway deployment URL (already set in `.env`).
 
 ---
 
