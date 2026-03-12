@@ -22,14 +22,16 @@ export type BBox = {
 // ─── Constants ────────────────────────────────────────────────
 
 /** Upscale factor applied to the cropped region before OCR.
- *  4× gives PaddleOCR enough pixels to distinguish complex kanji strokes
- *  and katakana vs hiragana (e.g. リ vs り). */
-const UPSCALE = 4;
+ *  2× gives PaddleOCR enough resolution while keeping file size reasonable.
+ *  The server further upscales tiny crops (< 96px min side) so 2× avoids
+ *  a wasteful double-resize that degrades quality. */
+const UPSCALE = 2;
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-/** Padding fraction (~15%) added around the bounding box to avoid tight crops. */
-const CROP_PADDING = 0.15;
+/** Padding fraction (~8%) added around the bounding box to avoid tight crops.
+ *  Kept modest so narrow vertical bubbles don't get excessive non-text area. */
+const CROP_PADDING = 0.08;
 
 /**
  * Crops a region from an HTMLImageElement into an offscreen canvas,
@@ -327,7 +329,7 @@ export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | n
 
   // ── Connected-component filtering to find tight text bounds ──
   const MIN_COMPONENT_REL = 0.0001; // 0.01% — drops isolated specks
-  const MAX_COMPONENT_REL = 0.20;   // 20%   — drops large artwork fills
+  const MAX_COMPONENT_REL = 0.45;   // 45%   — generous: text in tight bubbles can be large
   const minPx = Math.max(Math.round(total * MIN_COMPONENT_REL), 5);
   const maxPx = Math.round(total * MAX_COMPONENT_REL);
   const { labels, sizes } = labelComponents(mask, w, h);
