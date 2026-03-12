@@ -197,15 +197,9 @@ Both payloads contain nearly identical fields (`chapter_id`, `page_index`, `regi
 
 `regionHash(sel.region)` is called **twice** in `handlePageSelect()` — once for `addHistory` and once for `upsertChapterTranslation`. Though cheap, it should be computed once and reused.
 
-### Issue 3 — `addHistoryEntry` / `deleteHistoryEntry` alias exports
+### Issue 3 — ~~`addHistoryEntry` / `deleteHistoryEntry` alias exports~~ ✅ FIXED
 
-[`src/services/translationHistory.ts`](src/services/translationHistory.ts) exports both:
-- `createTranslationHistory` (canonical)
-- `addHistoryEntry` (alias)
-- `deleteTranslationHistory` (canonical)
-- `deleteHistoryEntry` (alias)
-
-These two aliases create confusion. Recommend removing them and using canonical names everywhere.
+Aliases have been removed from `src/services/translationHistory.ts`. Only canonical names `createTranslationHistory` and `deleteTranslationHistory` remain.
 
 ### Issue 4 — `hasInkContent` duplicates inner pixel-scan work
 
@@ -275,7 +269,11 @@ Overlays use the `RegionBox { x, y, w, h }` type where all values are **fraction
 | `DEFAULT_LANG`, `VERTICAL_RATIO`, `UPSCALE` constants in `ocr.ts` | Only referenced by dead functions | **Yes** |
 | `console.warn` patch for Tesseract "Parameter not found" in `ocr.ts` | Suppresses Tesseract.js noise — irrelevant once Tesseract is removed | **Yes** |
 | `tesseract.js` npm dependency | Bundled but the active OCR path never calls `createWorker` | **Yes** (remove from `package.json`) |
-| `addHistoryEntry` / `deleteHistoryEntry` alias exports in `translationHistory.ts` | Aliases for canonical functions; stale naming from prior refactor | **Yes** (remove aliases, keep canonical names) |
+| `addHistoryEntry` / `deleteHistoryEntry` alias exports in `translationHistory.ts` | ~~Aliases for canonical functions; stale naming from prior refactor~~ | ✅ **Removed** |
+| `listManga()`, `listSharedManga`, `listMyPrivateManga`, `listMySharedManga` in `manga.ts` | Unused alias functions/exports; canonical fetch functions used directly | ✅ **Removed** |
+| `fetchChapterCount()` in `chapters.ts` | Never called anywhere in the codebase | ✅ **Removed** |
+| `uploadChapterCbz()` export in `chapters.ts` | Only used internally by `uploadChapter()`; no external callers | ✅ **De-exported (now private)** |
+| `PageRow` type alias in `types/index.ts` | Unused alias for `Page` type | ✅ **Removed** |
 | Stale comments referencing Tesseract.js / MyMemory / Flask in `main.py` | Legacy references from previous implementation | Update or remove |
 
 ### Uncertain / keep for now
@@ -351,7 +349,20 @@ Instead of extracting all pages at once with `Promise.all`, extract the first 3 
 
 ---
 
-## Summary Table
+---
+
+## 10. Reader UX Changes (Post-Analysis)
+
+The following reader improvements have been implemented since this analysis was generated:
+
+| Change | Details |
+|--------|---------|
+| **Swiper locked during OCR** | `allowTouchMove` is imperatively set to `false` on the Swiper instance when `selectionMode` is active or an OCR is running. This prevents the panel from sliding during drag-select. |
+| **Keyboard nav locked during OCR** | Arrow key handler returns early when `selectionMode` is true. ESC key exits OCR mode. |
+| **Click-to-navigate in gutters** | Desktop prev/next page click zones are now positioned in the black gutters outside the `max-w-3xl` reader panel using `fixed` positioning, so they do not overlap the manga image. |
+| **Image fills viewer height** | `fitPage` mode now uses `h-full w-auto` on the image. Swiper is wrapped in `absolute inset-0` to give it a concrete pixel height to resolve `height: 100%` against. |
+| **Duplicate page counter removed** | The bottom bar page counter was removed; the header already shows `Page · LTR · X / N`. |
+| **End-of-chapter label removed from page mode** | Only the scroll mode footer retains this label. |
 
 | Area | Status | Action needed |
 |---|---|---|
@@ -362,6 +373,6 @@ Instead of extracting all pages at once with `Promise.all`, extract the first 3 
 | Translation storage | ⚠️ Double inline write in page component | Extract to service function |
 | Overlay rendering | ✅ Correct fractional coordinates | Minor: share ResizeObserver |
 | `regionHash` dedup | ✅ DB constraint + in-memory key dedup | Compute once per OCR call |
-| Alias exports | ⚠️ `addHistoryEntry` / `deleteHistoryEntry` | Remove aliases |
+| Alias exports | ✅ Removed — `addHistoryEntry`, `deleteHistoryEntry`, `listManga`, `listSharedManga`, `listMyPrivateManga`, `listMySharedManga`, `fetchChapterCount`, `PageRow` | None |
 | Performance | ⚠️ Double canvas crop, full CBZ unzip | Fix double crop; consider lazy extraction |
 | Auto bubble detection | ❌ Not yet implemented | New `/detect` endpoint in Python server |

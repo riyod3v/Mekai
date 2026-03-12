@@ -202,11 +202,18 @@ No duplicate clients allowed.
 
 Buckets:
 
-- covers
-- pages
-- ocr-temp
+- `covers` — manga cover images (`{userId}/manga/{mangaId}/cover.png`)
+- `chapters` — CBZ chapter files (`{userId}/{mangaId}/{chapterNumber}.cbz`)
 
 Agents must not create new buckets without explicit instruction.
+
+## Reader Mode Rules
+
+- Reading mode (`scroll` | `page`) and direction (`rtl` | `ltr`) are persisted to `localStorage`.
+- Reading progress (`last_page_index`) is written to the `reading_progress` Supabase table with debounce.
+- In page mode, Swiper touch and mouse-drag must be disabled (`allowTouchMove = false`) when `selectionMode` or an OCR is active. Set this imperatively on the Swiper instance, not just via props.
+- Arrow key navigation is blocked while `selectionMode` is active; ESC exits OCR mode.
+- Desktop click-to-navigate zones are placed in the gutters outside the `max-w-3xl` reader panel using `fixed` positioning to avoid overlapping the manga image.
 
 ## OCR Image Handling
 

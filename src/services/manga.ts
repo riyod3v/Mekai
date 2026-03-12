@@ -2,9 +2,6 @@ import { supabase } from '@/lib/supabase';
 import type { Manga, MangaFormData } from '@/types';
 import { uploadMangaCover } from '@/services/storageCovers';
 
-/** DB row type — same shape as Manga, exported for consumers that prefer this name. */
-export type MangaRow = Manga;
-
 // ─── Queries ────────────────────────────────────────────────
 
 /** Normalise the Supabase count-join shape into chapter_count */
@@ -140,31 +137,3 @@ export async function touchManga(id: string): Promise<void> {
     .eq('id', id);
   if (error) throw error;
 }
-
-// ─── Canonical aliases ───────────────────────────────────────
-
-/**
- * List all manga readable by the current user:
- * shared manga (all authenticated) + the user's own private manga.
- */
-export async function listManga(): Promise<Manga[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id;
-
-  const { data, error } = await supabase
-    .from('manga')
-    .select('*')
-    .or(userId ? `visibility.eq.shared,and(visibility.eq.private,owner_id.eq.${userId})` : 'visibility.eq.shared')
-    .order('updated_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return data as Manga[];
-}
-
-/** Alias: all shared manga (readable by any authenticated user). */
-export const listSharedManga = fetchSharedManga;
-
-/** Alias: private manga owned by the given user. */
-export const listMyPrivateManga = fetchMyPrivateManga;
-
-/** Alias: shared manga owned by the given user (for translator dashboard). */
-export const listMySharedManga = fetchMangaByOwner;

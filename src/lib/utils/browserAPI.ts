@@ -1,5 +1,5 @@
 // src/lib/utils/browserAPI.ts
-import { type BBox, cropToDataUrl, hasInkContent } from '@/lib/ocr/ocr';
+import { type BBox, prepareOcrImage } from '@/lib/ocr/ocr';
 import { translateJapaneseToEnglishWithProvider } from '@/lib/translate/translate';
 import { toRomaji } from '@/lib/translate/romaji';
 import { isMangaOcrAvailable, localMangaOcr } from '@/lib/api/manga-ocr-py-API';
@@ -59,8 +59,10 @@ export async function ocrAndTranslate(
     return emptyResult;
   }
 
-  // Pre-flight: skip OCR entirely if region has no detectable ink
-  if (!hasInkContent(imgEl, bbox)) {
+  // Pre-flight: crop, detect ink, and tighten to text bounds in one pass.
+  // Returns null if no detectable text in the selected region.
+  const base64 = prepareOcrImage(imgEl, bbox);
+  if (!base64) {
     return emptyResult;
   }
 
@@ -78,7 +80,6 @@ export async function ocrAndTranslate(
 
   _ocrRunning = true;
   try {
-    const base64 = cropToDataUrl(imgEl, bbox);
     const ocrText = await localMangaOcr(base64);
 
     if (!ocrText) {

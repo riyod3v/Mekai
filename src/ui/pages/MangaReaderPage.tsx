@@ -164,13 +164,13 @@ function ReaderPageItem({
         active={selectionActive}
         imageRef={imgRef}
         onSelect={handleSelect}
-        className={fitPage ? 'h-full flex items-center justify-center' : undefined}
+        className={fitPage ? 'h-full flex items-center justify-center' : 'w-full'}
       >
         <img
           ref={imgRef}
           src={src}
           alt={`Page ${pageIndex + 1}`}
-          className={fitPage ? 'max-h-full max-w-full w-auto object-contain block' : 'w-full block'}
+          className={fitPage ? 'h-full w-auto max-w-full object-contain block' : 'w-full block'}
           loading={loading}
           draggable={false}
           crossOrigin="anonymous"
@@ -303,6 +303,12 @@ export default function MangaReaderPage() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reactively disable/enable Swiper touch — props alone don't update a mounted instance
+  useEffect(() => {
+    if (!swiperRef.current) return;
+    swiperRef.current.allowTouchMove = !selectionMode && ocr === null;
+  }, [selectionMode, ocr]);
 
   const { data: historyRows } = useTranslationHistory(chapterId ?? '');
   const addHistory = useAddTranslationHistory();
@@ -675,6 +681,13 @@ export default function MangaReaderPage() {
     function onKey(e: KeyboardEvent) {
       // Don't hijack when typing in an input / textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // ESC exits OCR selection mode
+      if (e.key === 'Escape') {
+        if (selectionMode) { setSelectionMode(false); setOcr(null); }
+        return;
+      }
+      // Don't navigate pages while OCR selection is active
+      if (selectionMode) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         swiperRef.current?.slideNext();
         setOcr(null);
@@ -685,7 +698,7 @@ export default function MangaReaderPage() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [readingMode, images.length]);
+  }, [readingMode, images.length, selectionMode]);
 
   // ── History highlight ──────────────────────────────────────
   const handleHighlight = useCallback((entry: TranslationHistoryRow) => {
@@ -949,7 +962,7 @@ export default function MangaReaderPage() {
           readingMode === 'scroll' ? (
             /* ── Scroll mode: all pages stacked vertically ── */
             <div className="flex-1 overflow-y-auto reader-scrollbar">
-            <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
+            <div className="w-full max-w-3xl mx-auto">
               {images.map((src, i) => (
                 <ReaderPageItem
                   key={src}
@@ -969,36 +982,38 @@ export default function MangaReaderPage() {
                   onImageRef={handleImageRef}
                 />
               ))}
-
-              {/* End-of-chapter footer */}
-              <div className="w-full py-6 flex flex-col items-center border-t border-gray-200 dark:border-white/10 mt-2">
-                <p className="text-sm text-gray-400">End of Chapter {chapter.chapter_number}</p>
-              </div>
             </div>
             </div>
           ) : (
             /* ── Page mode: one page at a time (Swiper) ── */
-            <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto overflow-hidden">
+            <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto overflow-hidden relative">
+              {/* Desktop: click zones in the gutters on either side of the max-w-3xl panel */}
+              {!selectionMode && (
+                <>
+                  <div
+                    className="hidden sm:block fixed left-0 top-0 h-full z-10 cursor-pointer"
+                    style={{ right: 'calc(50% + 384px + 1px)' }}
+                    onClick={() => { swiperInstance?.slidePrev(); setOcr(null); }}
+                    aria-label="Previous page"
+                  />
+                  <div
+                    className="hidden sm:block fixed right-0 top-0 h-full z-10 cursor-pointer"
+                    style={{ left: 'calc(50% + 384px + 1px)' }}
+                    onClick={() => { swiperInstance?.slideNext(); setOcr(null); }}
+                    aria-label="Next page"
+                  />
+                </>
+              )}
               {/* Swiper page viewer — fills remaining height */}
               <div className="flex-1 min-h-0 w-full relative">
-                {/* Desktop: invisible left click zone (prev page) */}
-                <div
-                  className="hidden sm:block absolute left-0 top-0 h-full w-1/4 z-10 cursor-pointer"
-                  onClick={() => { if (!selectionMode) { swiperInstance?.slidePrev(); setOcr(null); } }}
-                  aria-label="Previous page"
-                />
-                {/* Desktop: invisible right click zone (next page) */}
-                <div
-                  className="hidden sm:block absolute right-0 top-0 h-full w-1/4 z-10 cursor-pointer"
-                  onClick={() => { if (!selectionMode) { swiperInstance?.slideNext(); setOcr(null); } }}
-                  aria-label="Next page"
-                />
+                {/* absolute inset-0 gives Swiper a concrete pixel height to resolve height:100% against */}
+                <div className="absolute inset-0">
               <Swiper
                 style={{ height: '100%' }}
                 key={readingDirection}
                 dir={readingDirection}
                 initialSlide={currentPage}
-                allowTouchMove={!selectionMode}
+                allowTouchMove={!selectionMode && ocr === null}
                 onSwiper={(s) => {
                   setSwiperInstance(s);
                   swiperRef.current = s;
@@ -1034,19 +1049,15 @@ export default function MangaReaderPage() {
                   </SwiperSlide>
                 ))}
               </Swiper>
-              </div>
+              </div>{/* end absolute inset-0 */}
+              </div>{/* end flex-1 min-h-0 */}
 
-              {/* Bottom UI bar — auto-hides on tap */}
+              {/* Bottom UI bar — overlays Swiper so it doesn't steal height */}
               <div
-                className={`w-full flex flex-col items-center gap-1.5 px-4 py-3 transition-all duration-300 ${
-                  uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+                className={`absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center gap-1.5 px-4 py-3 transition-opacity duration-300 ${
+                  uiVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}
               >
-                {/* Page counter */}
-                <span className="text-xs text-gray-400 tabular-nums">
-                  {currentPage + 1} / {images.length}
-                </span>
-
                 {/* Mobile: Prev + scrubber + Next */}
                 {images.length > 1 && (
                   <div className="flex sm:hidden items-center gap-2 w-full max-w-xs">
@@ -1078,12 +1089,6 @@ export default function MangaReaderPage() {
                 )}
               </div>
 
-              {/* End-of-chapter indicator */}
-              {currentPage === images.length - 1 && (
-                <div className={`flex items-center justify-center py-2 text-xs text-gray-400 transition-all duration-300 ${uiVisible ? 'opacity-100' : 'opacity-0'}`}>
-                  <span>End of Chapter {chapter.chapter_number}</span>
-                </div>
-              )}
             </div>
           )
         )}

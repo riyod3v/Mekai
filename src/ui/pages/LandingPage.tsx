@@ -96,7 +96,6 @@ export default function LandingPage() {
       {/* Hero */}
       <main className="flex-1">
         <section className="relative max-w-6xl mx-auto px-6 py-28 sm:py-40 text-center overflow-hidden">
-          {/* Subtle indigo glow behind hero */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden>
             <div className="w-[600px] h-[350px] bg-indigo-600/5 dark:bg-indigo-500/10 blur-3xl rounded-full" />
           </div>

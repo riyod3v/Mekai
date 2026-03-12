@@ -1,19 +1,13 @@
 /**
- * Browser-side OCR utility using Tesseract.js.
+ * Browser-side OCR utility for manga text extraction.
  *
- * Pipeline: cropToCanvas → preprocessCanvasForManga (Otsu binarization)
- *         → tightenToInk → rotateIfVertical → Tesseract recognize.
+ * Pipeline: cropToCanvas → Otsu binarization (analysis copy) →
+ *           connected-component filtering → tight RGB re-crop → PaddleOCR.
  *
- * Vertical-text rotation is applied *after* ink-tightening so the
- * aspect-ratio check reflects the actual text block, not the user's
- * raw selection which may include surrounding whitespace.
+ * The binarised copy is only used to locate ink pixels; the image sent to
+ * PaddleOCR is the original RGB crop (tightened to text bounds) since
+ * PaddleOCR's Japanese model expects standard colour input.
  */
-
-// ─── Debug flag ───────────────────────────────────────────────
-/** Set to `true` to enable verbose OCR logging in the browser console. */
-const DEBUG_OCR = false;
-
-import { logger } from '@/lib/utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -32,27 +26,15 @@ export type BBox = {
  *  and katakana vs hiragana (e.g. リ vs り). */
 const UPSCALE = 4;
 
-/** Default Tesseract language. Override per call if needed. */
-const DEFAULT_LANG = 'jpn';
-
-/** Threshold: if height > width * this factor, assume vertical text. */
-const VERTICAL_RATIO = 1.3;
-
-/** Tesseract PSM type (avoids eager import of the full module). */
-type PSM = import('tesseract.js').PSM;
-
 // ─── Helpers ─────────────────────────────────────────────────
 
-/** Padding fraction (~8%) added around the bounding box to avoid tight crops. */
+/** Padding fraction (~15%) added around the bounding box to avoid tight crops. */
 const CROP_PADDING = 0.15;
 
 /**
  * Crops a region from an HTMLImageElement into an offscreen canvas,
- * upscaling by UPSCALE for better Tesseract accuracy.
+ * upscaling by UPSCALE for better OCR accuracy.
  * Adds padding around the bbox to avoid cutting into speech bubbles.
- *
- * Note: vertical-text rotation is handled separately by `rotateIfVertical`
- * which runs after ink-tightening for a more accurate aspect-ratio check.
  */
 function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
   const { naturalWidth: nw, naturalHeight: nh } = imgEl;
@@ -221,145 +203,6 @@ function labelComponents(
   return { labels, sizes };
 }
 
-/**
- * After binarisation, scan the canvas for dark (ink) pixels and return a
- * new canvas tightly cropped to their bounding box plus padding on every side.
- *
- * Connected-component filtering (Task 7):
- *   After computing the initial ink mask, labels connected components and
- *   discards:
- *     • Tiny specks  (< MIN_COMPONENT_REL of canvas area) — noise
- *     • Large blobs  (> MAX_COMPONENT_REL of canvas area) — artwork fills
- *   The tight bbox is then computed from only the surviving text-like pixels.
- *   If filtering removes everything, falls back to the original full ink bbox.
- *
- * Falls back to the original canvas when:
- *   - no dark pixels are found, or
- *   - the ink area is less than 0.5% of total pixels (likely noise / no text).
- *
- * The input canvas must already be binarised (black ink on white background)
- * as produced by `preprocessCanvasForManga`.
- */
-function tightenToInk(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) return canvas;
-
-  const { width: w, height: h } = canvas;
-  const { data: d } = ctx.getImageData(0, 0, w, h);
-  const total = w * h;
-
-  // Build binary mask + initial ink bbox in one pass
-  const mask = new Uint8Array(total);
-  let minX = w, minY = h, maxX = -1, maxY = -1;
-  let inkCount = 0;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const idx = y * w + x;
-      if (d[idx * 4] < 128) { // R channel — 0 = ink after binarisation
-        mask[idx] = 1;
-        inkCount++;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  // Fallback: no ink or ink area too small (< 0.5% of pixels → noise)
-  const inkRatio = inkCount / total;
-  if (maxX < 0 || inkRatio < 0.005) return canvas;
-
-  // ── Connected-component filtering ─────────────────────────
-  // Keep components whose pixel count falls between these fractions of total:
-  const MIN_COMPONENT_REL = 0.0001; // 0.01% — drops isolated specks
-  const MAX_COMPONENT_REL = 0.20;   // 20%   — drops large artwork fills
-  const minPx = Math.max(Math.round(total * MIN_COMPONENT_REL), 5);
-  const maxPx = Math.round(total * MAX_COMPONENT_REL);
-
-  const { labels, sizes } = labelComponents(mask, w, h);
-
-  // Determine which component ids are text-like
-  const keep = new Set<number>();
-  for (const [id, count] of sizes) {
-    if (count >= minPx && count <= maxPx) keep.add(id);
-  }
-
-  // Recompute tight bbox from text-like pixels only
-  let fMinX = w, fMinY = h, fMaxX = -1, fMaxY = -1;
-  if (keep.size > 0) {
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = y * w + x;
-        if (mask[idx] === 1 && keep.has(labels[idx])) {
-          if (x < fMinX) fMinX = x;
-          if (y < fMinY) fMinY = y;
-          if (x > fMaxX) fMaxX = x;
-          if (y > fMaxY) fMaxY = y;
-        }
-      }
-    }
-  }
-
-  // If filtering removed everything, fall back to original ink bbox
-  if (fMaxX < 0) {
-    fMinX = minX; fMinY = minY; fMaxX = maxX; fMaxY = maxY;
-  }
-
-  // 6% proportional padding around the final ink bbox
-  const padX = Math.round(w * 0.06);
-  const padY = Math.round(h * 0.06);
-  const x0 = Math.max(fMinX - padX, 0);
-  const y0 = Math.max(fMinY - padY, 0);
-  const x1 = Math.min(fMaxX + padX, w - 1);
-  const y1 = Math.min(fMaxY + padY, h - 1);
-  const bw = x1 - x0 + 1;
-  const bh = y1 - y0 + 1;
-
-  // No meaningful reduction — skip the extra allocation
-  if (bw >= w && bh >= h) return canvas;
-
-  const tight = document.createElement('canvas');
-  tight.width = bw;
-  tight.height = bh;
-  const tCtx = tight.getContext('2d');
-  if (!tCtx) return canvas;
-
-  tCtx.drawImage(canvas, x0, y0, bw, bh, 0, 0, bw, bh);
-  return tight;
-}
-
-/**
- * If the canvas is taller than wide (by VERTICAL_RATIO), rotate it 90° CW
- * so Tesseract treats vertical Japanese text as horizontal.
- *
- * This runs **after** ink-tightening so the aspect ratio reflects the actual
- * text block, not the user's initial selection which may include whitespace.
- */
-function rotateIfVertical(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const { width: w, height: h } = canvas;
-  if (h <= w * VERTICAL_RATIO) return canvas; // already landscape / square-ish
-
-  const rotated = document.createElement('canvas');
-  rotated.width = h;
-  rotated.height = w;
-
-  const ctx = rotated.getContext('2d');
-  if (!ctx) return canvas;
-
-  ctx.translate(rotated.width, 0);
-  ctx.rotate(Math.PI / 2);
-  ctx.drawImage(canvas, 0, 0);
-
-  return rotated;
-}
-
-/** Collapse runs of whitespace and trim the string. */
-function cleanText(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
-}
-
 // ─── Public helpers ──────────────────────────────────────────
 
 /**
@@ -422,87 +265,120 @@ export function cropToDataUrl(imgEl: HTMLImageElement, bbox: BBox): string {
   return canvas.toDataURL('image/png');
 }
 
-// ─── Public API ───────────────────────────────────────────────
-
-// Patch console.warn once to suppress "Parameter not found" noise from
-// the Tesseract WASM build (tesseract-core-relax_*.wasm.js).
-// The LSTM-only engine auto-loads legacy parameter files that reference
-// options the WASM build doesn't support, producing dozens of warnings.
-const _origWarn = console.warn;
-console.warn = (...args: unknown[]) => {
-  const first = typeof args[0] === 'string' ? args[0] : '';
-  if (first.includes('Parameter not found')) return;
-  _origWarn.apply(console, args);
-};
-
 /**
- * Run OCR on a normalised bounding-box region of an image element.
+ * Unified OCR preparation: crop once, detect ink, tighten to text bounds,
+ * and return an optimised base-64 data URL for PaddleOCR.
  *
- * @param imgEl  - The source HTMLImageElement (must be fully loaded).
- * @param bbox   - Normalised region { x, y, w, h } in 0..1.
- * @param lang   - Tesseract language code (default: 'jpn').
- * @returns      Cleaned OCR text.
- * @throws       If the image is not loaded, the canvas cannot be created,
- *               or Tesseract fails.
+ * Pipeline:
+ *   1. Crop the selected region (with UPSCALE and padding) — same as before.
+ *   2. Create a binarised analysis copy (Otsu) to locate ink pixels.
+ *   3. If no significant ink → return null (skip OCR).
+ *   4. Run connected-component filtering on the binarised copy to isolate
+ *      text-like regions and compute a tight bounding box.
+ *   5. Re-crop the **original RGB** canvas (not binarised) using those
+ *      tight bounds. PaddleOCR's model expects standard RGB input — sending
+ *      the original with less surrounding noise improves detection accuracy.
+ *   6. Return the tightened RGB crop as a data URL.
+ *
+ * This replaces the separate `hasInkContent()` + `cropToDataUrl()` calls
+ * in the OCR pipeline, eliminating the redundant second `cropToCanvas()`.
  */
-export async function ocrFromImageElement(
-  imgEl: HTMLImageElement,
-  bbox: BBox,
-  lang = DEFAULT_LANG,
-): Promise<string> {
-  if (!imgEl.complete || imgEl.naturalWidth === 0) {
-    throw new Error('Image element is not fully loaded. Wait for the onload event before calling ocrFromImageElement.');
-  }
-
-  // Lazy-load Tesseract so it isn't bundled in the initial chunk
-  const { createWorker } = await import('tesseract.js');
-
+export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | null {
   const canvas = cropToCanvas(imgEl, bbox);
-  preprocessCanvasForManga(canvas);
-  const tightCanvas = rotateIfVertical(tightenToInk(canvas));
 
-  const worker = await createWorker('jpn', 1, {
-    // logger must always be a function — passing undefined throws a TypeError
-    logger: DEBUG_OCR
-      ? (m: { status?: string; progress?: number }) => {
-          logger.log('[OCR]', m.status, m.progress);
-        }
-      : () => {}, // no-op keeps Tesseract happy while suppressing noise
-  });
+  // ── Create binarised analysis copy ──
+  const analysis = document.createElement('canvas');
+  analysis.width = canvas.width;
+  analysis.height = canvas.height;
+  const aCtx = analysis.getContext('2d', { willReadFrequently: true });
+  if (!aCtx) return canvas.toDataURL('image/png'); // fallback on context failure
 
-  try {
-    // Only set parameters that the WASM / LSTM-only build actually supports.
-    await worker.setParameters({
-      tessedit_pageseg_mode: '6' as PSM,
-    });
+  aCtx.drawImage(canvas, 0, 0);
+  preprocessCanvasForManga(analysis);
 
-    const {
-      data: { text },
-    } = await worker.recognize(tightCanvas);
+  // ── Check for ink content (same thresholds as hasInkContent) ──
+  const { width: w, height: h } = analysis;
+  const { data: d } = aCtx.getImageData(0, 0, w, h);
+  const total = w * h;
+  const mask = new Uint8Array(total);
 
-    let result = cleanText(text);
-    if (DEBUG_OCR) logger.log('[OCR] PSM 6 result:', result);
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  let inkCount = 0;
 
-    // If result is too short, retry with sparse-text mode (PSM 11)
-    if (result.length < 2) {
-      await worker.setParameters({
-        tessedit_pageseg_mode: '11' as PSM,
-      });
-      const {
-        data: { text: retryText },
-      } = await worker.recognize(tightCanvas);
-      result = cleanText(retryText);
-      if (DEBUG_OCR) logger.log('[OCR] PSM 11 retry:', result);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (d[idx * 4] < 128) { // R channel — 0 = ink after binarisation
+        mask[idx] = 1;
+        inkCount++;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
     }
-
-    return result;
-  } finally {
-    await worker.terminate();
   }
-}
 
-/**
- * Alias for ocrFromImageElement — canonical export name for the OCR pipeline.
- * @see ocrFromImageElement
- */
-export const extractTextFromImage = ocrFromImageElement;
+  // No significant ink → skip OCR
+  if (inkCount / total < 0.003) return null;
+  if (maxX < 0) return null;
+  const rawBboxArea = (maxX - minX + 1) * (maxY - minY + 1);
+  if (rawBboxArea / total < 0.008) return null;
+
+  // ── Connected-component filtering to find tight text bounds ──
+  const MIN_COMPONENT_REL = 0.0001; // 0.01% — drops isolated specks
+  const MAX_COMPONENT_REL = 0.20;   // 20%   — drops large artwork fills
+  const minPx = Math.max(Math.round(total * MIN_COMPONENT_REL), 5);
+  const maxPx = Math.round(total * MAX_COMPONENT_REL);
+  const { labels, sizes } = labelComponents(mask, w, h);
+
+  const keep = new Set<number>();
+  for (const [id, count] of sizes) {
+    if (count >= minPx && count <= maxPx) keep.add(id);
+  }
+
+  let fMinX = w, fMinY = h, fMaxX = -1, fMaxY = -1;
+  if (keep.size > 0) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        if (mask[idx] === 1 && keep.has(labels[idx])) {
+          if (x < fMinX) fMinX = x;
+          if (y < fMinY) fMinY = y;
+          if (x > fMaxX) fMaxX = x;
+          if (y > fMaxY) fMaxY = y;
+        }
+      }
+    }
+  }
+
+  // Fall back to raw ink bbox if filtering removed everything
+  if (fMaxX < 0) {
+    fMinX = minX; fMinY = minY; fMaxX = maxX; fMaxY = maxY;
+  }
+
+  // 6% proportional padding
+  const padX = Math.round(w * 0.06);
+  const padY = Math.round(h * 0.06);
+  const x0 = Math.max(fMinX - padX, 0);
+  const y0 = Math.max(fMinY - padY, 0);
+  const x1 = Math.min(fMaxX + padX, w - 1);
+  const y1 = Math.min(fMaxY + padY, h - 1);
+  const bw = x1 - x0 + 1;
+  const bh = y1 - y0 + 1;
+
+  // If tight crop is essentially the full canvas, just send the original
+  if (bw >= w && bh >= h) {
+    return canvas.toDataURL('image/png');
+  }
+
+  // ── Re-crop the ORIGINAL (non-binarised) canvas to the tight bounds ──
+  const tight = document.createElement('canvas');
+  tight.width = bw;
+  tight.height = bh;
+  const tCtx = tight.getContext('2d');
+  if (!tCtx) return canvas.toDataURL('image/png');
+
+  tCtx.drawImage(canvas, x0, y0, bw, bh, 0, 0, bw, bh);
+  return tight.toDataURL('image/png');
+}

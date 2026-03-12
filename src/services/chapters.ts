@@ -28,25 +28,14 @@ export async function fetchChapterById(id: string): Promise<Chapter> {
   return data as Chapter;
 }
 
-/** Get the total number of chapters for a manga */
-export async function fetchChapterCount(mangaId: string): Promise<number> {
-  const { count, error } = await supabase
-    .from('chapters')
-    .select('*', { count: 'exact', head: true })
-    .eq('manga_id', mangaId);
-
-  if (error) throw error;
-  return count ?? 0;
-}
-
-// ─── Mutations ────────────────────────────────────────────────
+// ─── Mutations ────────────────────────────────────────────
 
 /**
  * Upload a .cbz file for a chapter.
  * Reads the current session user – no caller-supplied uploader ID.
  * Storage path: [owner_id]/[manga_id]/[chapter_number].cbz
  */
-export async function uploadChapterCbz(
+async function uploadChapterCbz(
   file: File,
   mangaId: string,
   chapterNum: number,

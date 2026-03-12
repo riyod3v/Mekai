@@ -33,12 +33,12 @@
     @apply bg-slate-500 dark:bg-slate-500;
   }
 
-  /* Hide scrollbar on desktop — Swiper handles navigation on mobile */
+  /* Hide scrollbar on desktop for non-reader elements */
   @media (min-width: 640px) {
-    ::-webkit-scrollbar {
+    *:not(.reader-scrollbar)::-webkit-scrollbar {
       display: none;
     }
-    * {
+    *:not(.reader-scrollbar) {
       scrollbar-width: none;
       -ms-overflow-style: none;
     }

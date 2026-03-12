@@ -50,9 +50,6 @@ export interface Page {
   created_at: string;
 }
 
-/** Alias for Page matching schema naming convention */
-export type PageRow = Page;
-
 /** A bounding box described as fractions (0–1) of image dimensions */
 export interface RegionBox {
   x: number;

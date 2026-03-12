@@ -64,5 +64,3 @@ export async function deleteTranslationHistory(id: string): Promise<void> {
 
   if (error) throw new Error(error.message);
 }
-export const addHistoryEntry        = createTranslationHistory;
-export const deleteHistoryEntry     = deleteTranslationHistory;

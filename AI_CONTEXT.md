@@ -130,8 +130,7 @@ Supabase does **not** perform OCR or translation.
 | Bucket | Purpose | Path Format |
 |--------|---------|-------------|
 | `covers` | Manga cover images | `{userId}/manga/{mangaId}/cover.png` |
-| `pages` | Manga page images | `{userId}/manga/{mangaId}/chapters/{chapterId}/{pageNumber}.png` |
-| `ocr-temp` | Temporary cropped speech bubbles for OCR processing | Short-lived, no long-term storage needed |
+| `chapters` | Manga CBZ files | `{userId}/{mangaId}/{chapterNumber}.cbz` |
 
 ---
 
@@ -178,10 +177,10 @@ Each entry contains:
 
 Two reading modes are supported:
 
-- **Page-by-page mode**
-- **Vertical scroll mode**
+- **Page-by-page mode** — one page at a time using Swiper.js carousel (RTL/LTR direction toggle, keyboard arrow navigation, ESC to exit OCR)
+- **Vertical scroll mode** — all pages stacked continuously, IntersectionObserver tracks reading progress
 
-**Location:** `src/ui/pages/MangaReaderPage.tsx`
+Settings (mode, direction) are persisted to `localStorage`. Reading progress (last page index) is saved to the `reading_progress` Supabase table.
 
 ---
 
