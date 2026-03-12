@@ -15,7 +15,7 @@ const features = [
     icon: Languages,
     title: "OCR Translation",
     description:
-      "Select any text panel and get instant translations powered by AI — no app switching needed.",
+      "Draw a selection over any speech bubble and Mekai's OCR engine lifts the Japanese text instantly, delivering an English translation without leaving the reader.",
   },
   {
     icon: Vault,
@@ -42,9 +42,9 @@ const tutorialSteps = [
   {
     icon: Sparkles,
     step: "2",
-    title: "OCR-Translation",
+    title: "OCR + Translation",
     description:
-      "Once you release, OCR automatically detects the Japanese text and translates it to English. No need to switch apps or copy-paste — everything happens instantly.",
+      "Release your selection and Mekai takes over. The OCR engine reads the Japanese text straight from the image and returns an English translation on the spot. No copy-pasting, no tab-switching, no waiting.",
   },
   {
     icon: Save,
@@ -85,7 +85,7 @@ export default function LandingPage() {
 
             <Link
               to="/auth"
-              className="px-4 py-2 rounded-lg text-sm font-medium mekai-primary-bg hover:opacity-90 text-white transition-opacity"
+              className="px-5 py-2 rounded-full text-sm font-semibold mekai-primary-bg hover:opacity-90 text-white transition-opacity"
             >
               Log In
             </Link>
@@ -95,30 +95,37 @@ export default function LandingPage() {
 
       {/* Hero */}
       <main className="flex-1">
-        <section className="max-w-6xl mx-auto px-6 py-24 text-center">
-          <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-6 leading-tight">
-            Read manga.{" "}
-            <span className="text-indigo-600 dark:text-indigo-400">
-              Learn as you go.
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-10">
-            Mekai lets you read manga and instantly translate panels — saving
-            words to your personal vault as you discover them.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              to="/auth"
-              className="px-6 py-3 rounded-xl text-base font-semibold mekai-primary-bg hover:opacity-90 text-white transition-opacity"
-            >
-              Get Started
-            </Link>
-            <a
-              href="#LearnHowToUse"
-              className="px-6 py-3 rounded-xl text-base font-semibold border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-            >
-              Learn More
-            </a>
+        <section className="relative max-w-6xl mx-auto px-6 py-28 sm:py-40 text-center overflow-hidden">
+          {/* Subtle indigo glow behind hero */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden>
+            <div className="w-[600px] h-[350px] bg-indigo-600/5 dark:bg-indigo-500/10 blur-3xl rounded-full" />
+          </div>
+
+          <div className="relative">
+            <p className="text-5xl sm:text-7xl font-black tracking-tighter text-indigo-500 dark:text-indigo-400 mb-3 leading-none">
+              Mekai
+            </p>
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-6 leading-tight">
+              Read manga. Learn as you go.
+            </h1>
+            <p className="text-lg sm:text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto mb-10">
+              Mekai lets you read manga and instantly translate panels, saving
+              words to your personal vault as you discover them.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link
+                to="/auth"
+                className="px-8 py-3.5 rounded-full text-base font-semibold mekai-primary-bg hover:opacity-90 text-white transition-opacity"
+              >
+                Get Started
+              </Link>
+              <a
+                href="#LearnHowToUse"
+                className="px-8 py-3.5 rounded-full text-base font-semibold border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              >
+                Learn More
+              </a>
+            </div>
           </div>
         </section>
 
@@ -156,7 +163,7 @@ export default function LandingPage() {
             {tutorialSteps.map(({ icon: Icon, step, title, description }) => (
               <div
                 key={step}
-                className="relative p-6 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/10 dark:hover:shadow-indigo-500/20 hover:-translate-y-1 flex flex-col gap-4"
+                className="relative p-6 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 hover:border-indigo-500/40 dark:hover:border-indigo-500/40 hover:shadow-[0_0_18px_rgba(99,102,241,0.18)] dark:hover:shadow-[0_0_18px_rgba(99,102,241,0.25)] flex flex-col gap-4"
               >
                 <div className="absolute -top-3 -left-3 w-8 h-8 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-lg">
                   {step}

@@ -134,12 +134,13 @@ interface PageItemProps {
   isChapterOwner: boolean;
   readOnly?: boolean;
   onImageRef?: (pageIndex: number, ref: HTMLImageElement | null) => void;
+  fitPage?: boolean;
 }
 
 function ReaderPageItem({
   src, pageIndex, loading, selectionActive,
   onSelect, ocrState, onDismissOcr, overlays, highlightId,
-  onDismissOverlay, onSaveToVault, isChapterOwner, readOnly, onImageRef,
+  onDismissOverlay, onSaveToVault, isChapterOwner, readOnly, onImageRef, fitPage,
 }: PageItemProps) {
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -158,17 +159,18 @@ function ReaderPageItem({
   );
 
   return (
-    <div data-page-index={pageIndex} className="w-full relative">
+    <div data-page-index={pageIndex} className={fitPage ? 'h-full flex items-center justify-center relative' : 'w-full relative'}>
       <OCRSelectionLayer
         active={selectionActive}
         imageRef={imgRef}
         onSelect={handleSelect}
+        className={fitPage ? 'h-full flex items-center justify-center' : undefined}
       >
         <img
           ref={imgRef}
           src={src}
           alt={`Page ${pageIndex + 1}`}
-          className="w-full block"
+          className={fitPage ? 'max-h-full max-w-full w-auto object-contain block' : 'w-full block'}
           loading={loading}
           draggable={false}
           crossOrigin="anonymous"
@@ -256,12 +258,19 @@ export default function MangaReaderPage() {
   const imageRefs = useRef<{ [key: number]: HTMLImageElement | null }>({});
 
   function toggleReadingMode() {
+    const pageToRestore = currentPage;
     setReadingMode((prev) => {
       const next: ReadingMode = prev === 'scroll' ? 'page' : 'scroll';
       localStorage.setItem('mekai-reading-mode', next);
+      // After switching to scroll mode, scroll to the saved page
+      if (next === 'scroll') {
+        setTimeout(() => {
+          const el = document.querySelector(`[data-page-index="${pageToRestore}"]`);
+          if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        }, 50);
+      }
       return next;
     });
-    setCurrentPage(0);
     setOcr(null);
     setUiVisible(true);
     swiperRef.current = null;
@@ -730,7 +739,7 @@ export default function MangaReaderPage() {
   }
 
   return (
-  <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
+  <div className="h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col overflow-hidden">
     {/* ── Top bar with hamburger menu and centered title ────────── */}
     <header className={`sticky top-0 z-50 flex items-center justify-between px-4 py-3 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-200 dark:border-white/10 shadow-sm transition-transform duration-300 ${readingMode === 'page' && !uiVisible ? '-translate-y-full' : 'translate-y-0'}`}>
       
@@ -834,20 +843,19 @@ export default function MangaReaderPage() {
                         }`}
                       >
                         {mode === 'scroll' ? (
-                          // Continuous scroll icon: vertical rectangle with a downward arrow
+                          // Continuous scroll icon
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="3" y="1" width="8" height="10" rx="1" />
                             <line x1="7" y1="6" x2="7" y2="10" />
                             <polyline points="5 8.5 7 11 9 8.5" />
                           </svg>
                         ) : (
-                          // Page-by-page icon: two side-by-side vertical rectangles (swiped pages)
+                          // Single page icon
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="1" y="2" width="5" height="10" rx="1" />
-                            <rect x="8" y="2" width="5" height="10" rx="1" />
+                            <rect x="3" y="1" width="8" height="12" rx="1" />
                           </svg>
                         )}
-                        {mode === 'scroll' ? 'Scroll' : 'Page'}
+                        {mode === 'scroll' ? 'Scroll' : 'Single Page'}
                         {readingMode === mode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />}
                       </button>
                     ))}
@@ -871,7 +879,7 @@ export default function MangaReaderPage() {
                                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                             }`}
                           >
-                            {dir === 'rtl' ? '⟵' : '⟶'} {dir.toUpperCase()}
+                            {dir === 'rtl' ? '⟵ Right to Left' : '⟶ Left to Right'}
                             {readingDirection === dir && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />}
                           </button>
                         ))}
@@ -916,7 +924,7 @@ export default function MangaReaderPage() {
         />
       )}
 
-      <main className="flex-1">
+        <main className="flex-1 flex flex-col min-h-0">
         {selectionMode && (
           <div className="w-full max-w-3xl mx-auto px-4 pt-3">
             <div className="bg-indigo-50 dark:bg-white/5 backdrop-blur-md rounded-xl border border-indigo-300 dark:border-indigo-500/30 px-4 py-2 text-xs text-indigo-700 dark:text-indigo-300 text-center">
@@ -940,6 +948,7 @@ export default function MangaReaderPage() {
         {!extracting && !extractError && images.length > 0 && (
           readingMode === 'scroll' ? (
             /* ── Scroll mode: all pages stacked vertically ── */
+            <div className="flex-1 overflow-y-auto reader-scrollbar">
             <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
               {images.map((src, i) => (
                 <ReaderPageItem
@@ -962,35 +971,30 @@ export default function MangaReaderPage() {
               ))}
 
               {/* End-of-chapter footer */}
-              <div className="w-full py-10 flex flex-col items-center gap-4 border-t border-gray-200 dark:border-white/10 mt-2">
-                <BookOpen className="h-6 w-6 text-indigo-400" />
+              <div className="w-full py-6 flex flex-col items-center border-t border-gray-200 dark:border-white/10 mt-2">
                 <p className="text-sm text-gray-400">End of Chapter {chapter.chapter_number}</p>
-                <div className="flex gap-3">
-                  {nextChapter ? (
-                    <Link
-                      to={`/read/${nextChapter.id}`}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
-                    >
-                      Next: Chapter {nextChapter.chapter_number}
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/manga/${chapter.manga_id}`}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 text-sm font-medium transition-colors"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      Back to Manga
-                    </Link>
-                  )}
-                </div>
               </div>
+            </div>
             </div>
           ) : (
             /* ── Page mode: one page at a time (Swiper) ── */
-            <div className="w-full max-w-3xl mx-auto flex flex-col items-center py-4">
-              {/* Swiper page viewer — tap to toggle UI overlay */}
+            <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto overflow-hidden">
+              {/* Swiper page viewer — fills remaining height */}
+              <div className="flex-1 min-h-0 w-full relative">
+                {/* Desktop: invisible left click zone (prev page) */}
+                <div
+                  className="hidden sm:block absolute left-0 top-0 h-full w-1/4 z-10 cursor-pointer"
+                  onClick={() => { if (!selectionMode) { swiperInstance?.slidePrev(); setOcr(null); } }}
+                  aria-label="Previous page"
+                />
+                {/* Desktop: invisible right click zone (next page) */}
+                <div
+                  className="hidden sm:block absolute right-0 top-0 h-full w-1/4 z-10 cursor-pointer"
+                  onClick={() => { if (!selectionMode) { swiperInstance?.slideNext(); setOcr(null); } }}
+                  aria-label="Next page"
+                />
               <Swiper
+                style={{ height: '100%' }}
                 key={readingDirection}
                 dir={readingDirection}
                 initialSlide={currentPage}
@@ -1009,7 +1013,7 @@ export default function MangaReaderPage() {
                 className="w-full"
               >
                 {images.map((src, i) => (
-                  <SwiperSlide key={src}>
+                  <SwiperSlide key={src} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', height: '100%' }}>
                     <ReaderPageItem
                       src={src}
                       pageIndex={i}
@@ -1025,90 +1029,113 @@ export default function MangaReaderPage() {
                       isChapterOwner={isChapterOwner}
                       readOnly={isReadOnlyViewer}
                       onImageRef={handleImageRef}
+                      fitPage
                     />
                   </SwiperSlide>
                 ))}
               </Swiper>
+              </div>
 
               {/* Bottom UI bar — auto-hides on tap */}
               <div
-                className={`w-full flex flex-col items-center gap-2 px-4 py-3 transition-all duration-300 ${
+                className={`w-full flex flex-col items-center gap-1.5 px-4 py-3 transition-all duration-300 ${
                   uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
                 }`}
               >
-                {/* Range scrubber — mobile only */}
+                {/* Page counter */}
+                <span className="text-xs text-gray-400 tabular-nums">
+                  {currentPage + 1} / {images.length}
+                </span>
+
+                {/* Mobile: Prev + scrubber + Next */}
                 {images.length > 1 && (
-                  <input
-                    type="range"
-                    min={0}
-                    max={images.length - 1}
-                    value={currentPage}
-                    onChange={(e) => {
-                      const idx = Number(e.target.value);
-                      swiperInstance?.slideTo(idx);
-                    }}
-                    className="sm:hidden w-full max-w-xs accent-indigo-500"
-                    style={{ direction: readingDirection }}
-                    aria-label="Jump to page"
-                  />
+                  <div className="flex sm:hidden items-center gap-2 w-full max-w-xs">
+                    <button
+                      onClick={() => { swiperInstance?.slidePrev(); setOcr(null); }}
+                      disabled={currentPage === 0}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <input
+                      type="range"
+                      min={0}
+                      max={images.length - 1}
+                      value={currentPage}
+                      onChange={(e) => { swiperInstance?.slideTo(Number(e.target.value)); }}
+                      className="flex-1 accent-indigo-500"
+                      style={{ direction: readingDirection }}
+                      aria-label="Jump to page"
+                    />
+                    <button
+                      onClick={() => { swiperInstance?.slideNext(); setOcr(null); }}
+                      disabled={currentPage === images.length - 1}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
-
-                {/* Prev / counter / Next — always visible */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { swiperInstance?.slidePrev(); setOcr(null); }}
-                    disabled={currentPage === 0}
-                    className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Prev
-                  </button>
-
-                  <span className="text-sm text-gray-400 tabular-nums min-w-[5rem] text-center">
-                    {currentPage + 1} / {images.length}
-                  </span>
-
-                  <button
-                    onClick={() => { swiperInstance?.slideNext(); setOcr(null); }}
-                    disabled={currentPage === images.length - 1}
-                    className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
               </div>
 
-              {/* End-of-chapter footer — only shown on last page */}
+              {/* End-of-chapter indicator */}
               {currentPage === images.length - 1 && (
-                <div className="w-full py-8 flex flex-col items-center gap-4 border-t border-gray-200 dark:border-white/10">
-                  <BookOpen className="h-6 w-6 text-indigo-400" />
-                  <p className="text-sm text-gray-400">End of Chapter {chapter.chapter_number}</p>
-                  <div className="flex gap-3">
-                    {nextChapter ? (
-                      <Link
-                        to={`/read/${nextChapter.id}`}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl mekai-primary-bg hover:opacity-90 text-white text-sm font-medium transition-opacity"
-                      >
-                        Next: Chapter {nextChapter.chapter_number}
-                        <ChevronRight className="h-4 w-4" />
-                      </Link>
-                    ) : (
-                      <Link
-                        to={`/manga/${chapter.manga_id}`}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 text-sm font-medium transition-colors"
-                      >
-                        <ArrowLeft className="h-4 w-4" />
-                        Back to Manga
-                      </Link>
-                    )}
-                  </div>
+                <div className={`flex items-center justify-center py-2 text-xs text-gray-400 transition-all duration-300 ${uiVisible ? 'opacity-100' : 'opacity-0'}`}>
+                  <span>End of Chapter {chapter.chapter_number}</span>
                 </div>
               )}
             </div>
           )
         )}
       </main>
+
+      {/* ── Chapter navigation bar ───────────────────────────────────── */}
+      <div className={`sticky bottom-0 z-40 border-t border-gray-200 dark:border-white/10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md px-4 py-2.5 flex items-center gap-3 transition-all duration-300 ${
+        readingMode === 'page' && !uiVisible ? 'opacity-0 pointer-events-none translate-y-full' : 'opacity-100 translate-y-0'
+      }`}>
+        {/* Prev chapter */}
+        {prevChapter ? (
+          <Link
+            to={`/read/${prevChapter.id}`}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-600 dark:text-gray-300 transition-colors shrink-0"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Prev
+          </Link>
+        ) : (
+          <span className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100/50 dark:bg-white/5 text-gray-400 dark:text-gray-600 shrink-0 cursor-not-allowed">
+            <ChevronLeft className="h-3.5 w-3.5" /> Prev
+          </span>
+        )}
+
+        {/* Chapter dropdown */}
+        <div className="flex-1 min-w-0 relative">
+          <select
+            value={chapterId ?? ''}
+            onChange={(e) => navigate(`/read/${e.target.value}`)}
+            className="w-full px-4 py-1.5 rounded-full text-sm bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 border-none outline-none cursor-pointer text-center appearance-none"
+          >
+            {siblings.map((c) => (
+              <option key={c.id} value={c.id}>
+                Ch.{c.chapter_number}{c.title ? ` — ${c.title}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Next chapter */}
+        {nextChapter ? (
+          <Link
+            to={`/read/${nextChapter.id}`}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium mekai-primary-bg hover:opacity-90 text-white transition-opacity shrink-0"
+          >
+            Next <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        ) : (
+          <span className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100/50 dark:bg-white/5 text-gray-400 dark:text-gray-600 shrink-0 cursor-not-allowed">
+            Next <ChevronRight className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </div>
 
       {/* ── History drawer ───────────────────────────────────── */}
       <Drawer

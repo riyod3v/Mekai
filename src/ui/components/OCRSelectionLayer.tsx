@@ -17,6 +17,8 @@ interface Props {
   /** The image element ref so we can compute fractional coords */
   imageRef: React.RefObject<HTMLImageElement | null>;
   children: React.ReactNode;
+  /** Extra classes merged onto the container div */
+  className?: string;
 }
 
 interface DragState {
@@ -26,7 +28,7 @@ interface DragState {
   curY: number;
 }
 
-export function OCRSelectionLayer({ active, onSelect, imageRef, children }: Props) {
+export function OCRSelectionLayer({ active, onSelect, imageRef, children, className }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
 
@@ -116,7 +118,7 @@ export function OCRSelectionLayer({ active, onSelect, imageRef, children }: Prop
   return (
     <div
       ref={containerRef}
-      className={clsx('relative', active && 'page-select-cursor select-none')}
+      className={clsx('relative', active && 'page-select-cursor select-none', className)}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

@@ -72,6 +72,22 @@
   .mekai-primary-text { color: #40467c; }
   .mekai-primary-border { border-color: rgba(64, 70, 124, 0.45); }
 
+  /* Re-enable scrollbar inside the reader scroll container */
+  .reader-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: #6366f1 #1e293b;
+  }
+  .reader-scrollbar::-webkit-scrollbar { display: block; width: 10px; }
+  .reader-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+  .reader-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #6366f1;
+    border-radius: 999px;
+    border: 2px solid #1e293b;
+  }
+  .reader-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #818cf8;
+  }
+
   .animate-slide-up {
     animation: slide-up 0.25s ease-out;
   }
