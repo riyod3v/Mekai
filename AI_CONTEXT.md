@@ -213,7 +213,8 @@ Two reading modes are supported:
 py-mekai-api/
 |-- main.py            <- FastAPI server (PaddleOCR + OPUS-MT)
 |-- Dockerfile         <- Railway deployment image
-|-- requirements.txt
+|-- railwayReq.txt     <- Railway deployment deps
+|-- localReq.txt       <- Local development deps (all-in-one)
 |-- railway.json
 |-- Procfile
 +-- README.md

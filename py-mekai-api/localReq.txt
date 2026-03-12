@@ -1,0 +1,38 @@
+# Mekai API — LOCAL installation requirements
+#
+# This file contains ALL dependencies needed for local development.
+# For Railway deployment, railwayReq.txt is used instead (via Dockerfile).
+#
+# Install (one command):
+#   uv pip install -r localReq.txt
+#
+# Then download models:
+#   uv run python main.py --install-ocr
+#   uv run python main.py --install-translate
+
+# ── Web framework ──────────────────────────────────────────────
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+python-multipart>=0.0.9        # required for UploadFile support
+
+
+# ── Image handling ─────────────────────────────────────────────
+Pillow>=10.0,<11.0
+opencv-python-headless>=4.8,<5.0
+numpy>=1.24,<3.0
+
+# ── OCR engine (CPU-only PaddlePaddle + PaddleOCR) ────────────
+paddlepaddle>=2.6.0,<3.0
+paddleocr>=2.9.0,<3.0
+setuptools                     # required by PaddleOCR at runtime
+
+# ── Translation — OPUS-MT ja→en (Helsinki-NLP/opus-mt-ja-en) ──
+# NOTE: This installs full torch (~2.5 GB). For CPU-only (~200 MB), run
+#   instead of this file's torch line:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+# then install everything else:
+#   uv pip install -r localReq.txt  (torch will be skipped since it's already installed)
+torch
+transformers>=4.40,<5.0
+sentencepiece>=0.2.0
+sacremoses                     # recommended by MarianMT tokenizer

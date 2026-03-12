@@ -35,33 +35,28 @@ source .venv/bin/activate
 .venv\Scripts\activate
 ```
 
-### 2 — Install dependencies
+### 2 — Install all dependencies (one command)
 
 ```bash
-uv pip install -r requirements.txt
+uv pip install -r localReq.txt
 ```
 
-### 3 — Install PyTorch CPU-only (required for translation)
+This installs everything needed locally: FastAPI, PaddleOCR, PyTorch, numpy, etc.
 
-```bash
-uv pip install torch --index-url https://download.pytorch.org/whl/cpu
-```
+> **Tip:** For a smaller PyTorch install (~200 MB instead of ~2.5 GB), install
+> CPU-only torch first, then the rest:
+> ```bash
+> uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+> uv pip install -r localReq.txt
+> ```
 
-This installs the CPU-only build (~200 MB instead of ~2.5 GB with CUDA).
-
-### 4 — Install setuptools (required for PaddleOCR)
-
-```bash
-uv pip install setuptools
-```
-
-### 5 — Download PaddleOCR models (200 MB total, one-time)
+### 3 — Download PaddleOCR models (200 MB total, one-time)
 
 ```bash
 uv run python main.py --install-ocr
 ```
 
-### 6 — Download the OPUS-MT ja→en model (one-time, ~300 MB)
+### 4 — Download the OPUS-MT ja→en model (one-time, ~300 MB)
 
 ```bash
 uv run python main.py --install-translate
@@ -69,7 +64,7 @@ uv run python main.py --install-translate
 
 Models auto-download on first OCR request if you skip this step.
 
-### 7 — Start the server
+### 5 — Start the server
 
 ```bash
 uv run python main.py

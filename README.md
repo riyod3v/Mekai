@@ -179,7 +179,8 @@ mekai/
 +-- py-mekai-api/                        <- Python OCR/translation microservice
     |-- main.py                          <- FastAPI server (PaddleOCR + OPUS-MT)
     |-- Dockerfile                       <- Railway deployment image
-    |-- requirements.txt
+    |-- railwayReq.txt                   <- Railway deployment deps
+    |-- localReq.txt                     <- Local development deps (all-in-one)
     |-- railway.json
     |-- nixpacks.toml
     |-- Procfile
@@ -334,9 +335,7 @@ uv venv --python 3.11 .venv
 # Linux/macOS:
 # source .venv/bin/activate
 
-uv pip install -r requirements.txt
-uv pip install torch --index-url https://download.pytorch.org/whl/cpu
-uv pip install setuptools
+uv pip install -r localReq.txt
 
 python main.py --install-ocr
 python main.py --install-translate

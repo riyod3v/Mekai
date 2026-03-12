@@ -1,11 +1,10 @@
-# Mekai API — Lightweight PaddleOCR backend
+# Mekai API — Railway deployment requirements
 #
 # Target: Railway free tier (500 MB RAM limit, 4 GB image limit)
 # Stack:  FastAPI + PaddleOCR (CPU-only) + OPUS-MT (Helsinki-NLP/opus-mt-ja-en)
 #
-# Install (x86_64):
-#   pip install -r requirements.txt
-#   python main.py --install-translate   # one-time OPUS-MT model download (~300 MB)
+# Used by Dockerfile and nixpacks.toml for Railway deployment.
+# For local development, use localReq.txt instead.
 #
 # ARM64 / Apple Silicon: see README.md for workarounds.
 

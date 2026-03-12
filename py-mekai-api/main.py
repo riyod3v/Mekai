@@ -11,8 +11,9 @@
 #   GET  /translate/health — translation readiness probe
 #   POST /translate       — ja→en translation (OPUS-MT)
 #
-# Quick start:
-#   pip install -r requirements.txt
+# Quick start (local):
+#   pip install -r localReq.txt
+#   python main.py --install-ocr         # one-time PaddleOCR model download
 #   python main.py --install-translate   # one-time OPUS-MT model download (~300 MB)
 #   python main.py                       # start on :5100
 
@@ -132,9 +133,9 @@ def get_paddle_ocr():
       - use_gpu=False               → CPU-only (Railway has no GPU)
       - enable_mkldnn=True          → Intel MKL-DNN acceleration on CPU
       - cpu_threads=_thread_count   → matches OMP_NUM_THREADS (2 on Railway, up to 4 locally)
-      - det_limit_side_len=512      → cap detection input size
-      - det_db_box_thresh=0.2       → lower threshold catches more manga text
-      - det_db_unclip_ratio=1.8     → wider text regions for tight kana spacing
+      - det_limit_side_len=512/1920  → cap detection input size (Railway/local)
+      - det_db_box_thresh=0.2/0.15  → lower threshold catches more manga text
+      - det_db_unclip_ratio=1.8/2.0 → wider text regions for tight kana spacing
       - use_space_char=False         → no false spaces in Japanese output
       - show_log=False              → reduce noise
 
@@ -154,11 +155,11 @@ def get_paddle_ocr():
                 show_log=False,
                 # ── Detection tuning ──
                 det_db_score_mode="fast",
-                det_db_box_thresh=0.2,
-                det_db_unclip_ratio=1.8,   # wider unclip for tight manga text / small kana
-                det_limit_side_len=512 if _on_railway else 960,
+                det_db_box_thresh=0.2 if _on_railway else 0.15,  # lower locally → catches more text
+                det_db_unclip_ratio=1.8 if _on_railway else 2.0,  # wider locally → better kana spacing
+                det_limit_side_len=512 if _on_railway else 1920,  # much larger locally → better accuracy
                 # ── Recognition tuning ──
-                rec_batch_num=1,
+                rec_batch_num=1 if _on_railway else 4,  # batch more locally for throughput
                 use_space_char=False,       # Japanese has no inter-word spaces
                 # ── Runtime ──
                 enable_mkldnn=True,         # Intel MKL-DNN acceleration on CPU
@@ -239,10 +240,10 @@ def _translate_opus(text: str) -> str:
         with torch.no_grad():
             output = model.generate(
                 **inputs,
-                max_length=256,
+                max_length=256 if _on_railway else 512,  # longer output locally
                 num_beams=_TRANSLATE_NUM_BEAMS,
                 no_repeat_ngram_size=3,  # prevents repetitive output artifacts
-                length_penalty=0.9,     # slightly prefer natural-length output
+                length_penalty=0.9 if _on_railway else 1.0,  # neutral length locally
                 early_stopping=True,
             )
         result = tokenizer.decode(output[0], skip_special_tokens=True)
@@ -459,22 +460,22 @@ def _decode_base64_image(image_b64: str) -> Image.Image:
 
 # Maximum dimension (width or height) for OCR input — keeps memory under control.
 # Railway (512 MB RAM): cap at 512 to stay within constraints.
-# Local: 960 gives ~3.5× more pixels, dramatically improving recognition of
+# Local: 1920 gives much more pixels, dramatically improving recognition of
 # complex kanji (e.g. 様 vs 機) and katakana/hiragana disambiguation.
-_OCR_MAX_DIMENSION = 512 if _on_railway else 960
+_OCR_MAX_DIMENSION = 512 if _on_railway else 1920
 
 # Minimum dimension — PaddleOCR recognition expects ≥32px height.  Tiny crops
-# get upscaled so the recognition model can read them.  Locally we use 64 so
+# get upscaled so the recognition model can read them.  Locally we use 96 so
 # small bubbles get enough detail for accurate stroke recognition.
-_OCR_MIN_DIMENSION = 32 if _on_railway else 64
+_OCR_MIN_DIMENSION = 32 if _on_railway else 96
 
 # Maximum base64 payload size (~10 MB encoded ≈ ~7.5 MB raw image)
 _MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
 
 # Translation beam width — more beams = better quality at the cost of CPU + RAM.
-# 4 beams is the standard quality setting for MarianMT / OPUS-MT; Railway uses
+# 6 beams locally gives noticeably better translation quality; Railway uses
 # 2 to stay within 512 MB RAM.
-_TRANSLATE_NUM_BEAMS = 2 if _on_railway else 4
+_TRANSLATE_NUM_BEAMS = 2 if _on_railway else 6
 
 
 def _preprocess_manga_image(img_array):
@@ -518,10 +519,19 @@ def _preprocess_manga_image(img_array):
 
     # Light unsharp-mask to bring out fine stroke edges — helps PaddleOCR
     # distinguish similar kanji (e.g. 様 vs 機) and kana script types.
-    # Radius=1.0, amount=0.3 is conservative enough to avoid amplifying noise.
-    blurred = cv2.GaussianBlur(img_array, (0, 0), 1.0)
-    img_array = cv2.addWeighted(img_array, 1.3, blurred, -0.3, 0)
-    del blurred
+    # Locally we use a stronger sharpening (amount=0.5) since we have more RAM
+    # and larger input images. Railway uses a conservative amount=0.3.
+    if _on_railway:
+        blurred = cv2.GaussianBlur(img_array, (0, 0), 1.0)
+        img_array = cv2.addWeighted(img_array, 1.3, blurred, -0.3, 0)
+        del blurred
+    else:
+        # Bilateral filter first: removes noise while preserving text edges
+        img_array = cv2.bilateralFilter(img_array, d=5, sigmaColor=50, sigmaSpace=50)
+        # Stronger unsharp mask for local — better edge definition
+        blurred = cv2.GaussianBlur(img_array, (0, 0), 1.2)
+        img_array = cv2.addWeighted(img_array, 1.5, blurred, -0.5, 0)
+        del blurred
 
     return img_array
 

@@ -32,10 +32,10 @@ RUN mkdir -p /app/models
 # Install CPU-only PyTorch FIRST (saves ~2.3 GB vs full torch with CUDA)
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-COPY requirements.txt .
+COPY railwayReq.txt .
 
 # Install remaining Python deps (torch already installed above)
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r railwayReq.txt
 
 COPY main.py .
 
