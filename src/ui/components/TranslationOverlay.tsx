@@ -1,10 +1,11 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2, Star, Volume2, ChevronUp, X, Copy, Check } from 'lucide-react';
+import { Trash2, Star, Volume2, ChevronUp, X, Copy, Check, Sparkles } from 'lucide-react';
 import { logger } from '@/lib/utils/logger';
 import clsx from 'clsx';
 import type { RegionBox } from '@/types';
 import type { TranslationProvider } from '@/lib/translate/translate';
+import { explainJapaneseSentence, isOpenRouterConfigured } from '@/lib/api/openrouter';
 
 interface Props {
   id: string;
@@ -158,13 +159,21 @@ interface DetailsSheetProps {
   onSaveToVault?: () => void;
   onDelete?: () => void;
   readOnly: boolean;
+  onExplain?: () => void;
+  aiExplanation?: string | null;
+  isExplaining?: boolean;
 }
 
 function DetailsSheet({
   ocrText, translated, romaji, ocrSource, translationProvider,
   onClose, onSpeak, onSaveToVault, onDelete, readOnly,
+  onExplain, aiExplanation, isExplaining,
 }: DetailsSheetProps) {
   const [copied, setCopied] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const startY = useRef<number>(0);
+  const currentY = useRef<number>(0);
+  const isDragging = useRef<boolean>(false);
 
   const handleCopy = useCallback(async (text: string) => {
     try {
@@ -185,6 +194,109 @@ function DetailsSheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Swipe down functionality
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      startY.current = e.touches[0].clientY;
+      isDragging.current = true;
+      sheet.style.transition = 'none';
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging.current) return;
+      
+      currentY.current = e.touches[0].clientY;
+      const deltaY = currentY.current - startY.current;
+      
+      if (deltaY > 0) {
+        sheet.style.transform = `translateY(${deltaY}px)`;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (!isDragging.current) return;
+      
+      isDragging.current = false;
+      const deltaY = currentY.current - startY.current;
+      
+      sheet.style.transition = 'transform 0.3s ease-out';
+      
+      if (deltaY > 150) {
+        // Swipe down far enough, close the sheet
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(onClose, 300);
+      } else {
+        // Snap back to position
+        sheet.style.transform = 'translateY(0)';
+      }
+      
+      startY.current = 0;
+      currentY.current = 0;
+    };
+
+    // Mouse events for desktop
+    const handleMouseDown = (e: MouseEvent) => {
+      startY.current = e.clientY;
+      isDragging.current = true;
+      sheet.style.transition = 'none';
+      e.preventDefault();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      
+      currentY.current = e.clientY;
+      const deltaY = currentY.current - startY.current;
+      
+      if (deltaY > 0) {
+        sheet.style.transform = `translateY(${deltaY}px)`;
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (!isDragging.current) return;
+      
+      isDragging.current = false;
+      const deltaY = currentY.current - startY.current;
+      
+      sheet.style.transition = 'transform 0.3s ease-out';
+      
+      if (deltaY > 150) {
+        // Drag down far enough, close the sheet
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(onClose, 300);
+      } else {
+        // Snap back to position
+        sheet.style.transform = 'translateY(0)';
+      }
+      
+      startY.current = 0;
+      currentY.current = 0;
+    };
+
+    // Touch events
+    sheet.addEventListener('touchstart', handleTouchStart, { passive: true });
+    sheet.addEventListener('touchmove', handleTouchMove, { passive: true });
+    sheet.addEventListener('touchend', handleTouchEnd);
+    
+    // Mouse events for desktop
+    sheet.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      sheet.removeEventListener('touchstart', handleTouchStart);
+      sheet.removeEventListener('touchmove', handleTouchMove);
+      sheet.removeEventListener('touchend', handleTouchEnd);
+      sheet.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [onClose]);
+
   return createPortal(
     <>
       {/* Backdrop */}
@@ -194,21 +306,26 @@ function DetailsSheet({
       />
 
       {/* Bottom sheet */}
-      <div className="fixed bottom-0 left-0 right-0 z-[9999] animate-slide-up">
-        <div className="max-w-lg mx-auto bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl border-t border-gray-200 dark:border-gray-700 overflow-hidden">
-          {/* Handle bar + close */}
-          <div className="relative flex items-center justify-center px-4 pt-3 pb-2">
+      <div className="fixed inset-x-0 bottom-0 z-[9999] w-full">
+        <div 
+          ref={sheetRef}
+          className="w-full max-w-lg mx-auto bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl border-t border-gray-200 dark:border-gray-700 overflow-hidden animate-slide-up"
+        >
+          {/* Handle bar */}
+          <div className="flex items-center justify-center px-4 pt-3 pb-2 cursor-grab active:cursor-grabbing">
             <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
-            <button
-              onClick={onClose}
-              className="absolute right-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
 
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="absolute right-3 top-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors z-10"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
           {/* Content */}
-          <div className="px-5 pb-5 space-y-3 max-h-[60vh] overflow-y-auto">
+          <div className="px-5 pb-5 space-y-3 max-h-[80vh] overflow-y-auto">
             {/* Original Japanese text */}
             {ocrText && (
               <div>
@@ -258,6 +375,32 @@ function DetailsSheet({
                     <Volume2 className="h-5 w-5" />
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* AI Explanation */}
+            {ocrText && onExplain && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                    AI Explanation
+                  </span>
+                  {!aiExplanation && (
+                    <button
+                      onClick={onExplain}
+                      disabled={isExplaining}
+                      className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors disabled:opacity-50"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {isExplaining ? 'Explaining...' : 'Explain'}
+                    </button>
+                  )}
+                </div>
+                {aiExplanation && (
+                  <div className="text-sm text-gray-700 dark:text-gray-300 bg-purple-50/50 dark:bg-purple-900/10 rounded-lg p-3 whitespace-pre-wrap leading-relaxed">
+                    {aiExplanation}
+                  </div>
+                )}
               </div>
             )}
 
@@ -314,6 +457,23 @@ export function TranslationOverlay({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [isExplaining, setIsExplaining] = useState(false);
+
+  const handleExplain = useCallback(async () => {
+    if (!ocrText || !isOpenRouterConfigured()) return;
+    
+    setIsExplaining(true);
+    try {
+      const explanation = await explainJapaneseSentence(ocrText);
+      setAiExplanation(explanation);
+    } catch (error) {
+      logger.error('[TranslationOverlay] AI explanation failed:', error);
+      setAiExplanation('AI explanation unavailable. Please check your API configuration.');
+    } finally {
+      setIsExplaining(false);
+    }
+  }, [ocrText]);
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -439,6 +599,9 @@ export function TranslationOverlay({
             onSaveToVault={onSaveToVault && ocrText ? () => onSaveToVault(id) : undefined}
             onDelete={!readOnly ? () => { setShowDetails(false); onDismiss(id); } : undefined}
             readOnly={readOnly}
+            onExplain={isOpenRouterConfigured() ? handleExplain : undefined}
+            aiExplanation={aiExplanation}
+            isExplaining={isExplaining}
           />
         )}
       </div>

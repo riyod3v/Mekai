@@ -2,19 +2,24 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/utils/logger';
-import { Vault, Trash2, Search, Volume2 } from 'lucide-react';
+import { Vault, Trash2, Search, Volume2, Sparkles, X } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWordVault, deleteFromWordVault } from '@/services/wordVault';
 import { LoadingSpinner } from '@/ui/components/LoadingSpinner';
 import { EmptyState } from '@/ui/components/EmptyState';
 import { formatDate } from '@/lib/utils/dateUtils';
+import { generateWordExplanation, isVocabAIConfigured } from '@/lib/api/vocabAI';
+import { Modal } from '@/ui/components/Modal';
 
 export default function WordVaultPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const notify = useNotification();
   const [search, setSearch] = useState('');
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [isExplaining, setIsExplaining] = useState(false);
 
   // Real-time sync: invalidate when the user's word_vault rows change
   // (covers saves made from MangaReaderPage in another tab, cross-device, etc.)
@@ -45,6 +50,34 @@ export default function WordVaultPage() {
     } catch (error) {
       logger.warn('[WordVaultPage] Text-to-speech not available:', error);
     }
+  }, []);
+
+  const handleExplainWord = useCallback(async (word: string) => {
+    if (!isVocabAIConfigured()) {
+      notify.error('AI explanation not configured');
+      return;
+    }
+
+    setSelectedWord(word);
+    setAiExplanation(null);
+    setIsExplaining(true);
+
+    try {
+      const explanation = await generateWordExplanation(word);
+      setAiExplanation(explanation);
+    } catch (error) {
+      logger.error('[WordVaultPage] AI explanation failed:', error);
+      notify.error('AI explanation unavailable');
+      setSelectedWord(null);
+    } finally {
+      setIsExplaining(false);
+    }
+  }, [notify]);
+
+  const closeExplanationModal = useCallback(() => {
+    setSelectedWord(null);
+    setAiExplanation(null);
+    setIsExplaining(false);
   }, []);
 
   const {
@@ -127,6 +160,15 @@ export default function WordVaultPage() {
                   </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-1">
+                  {isVocabAIConfigured() && (
+                    <button
+                      onClick={() => handleExplainWord(entry.original)}
+                      className="p-1.5 rounded-lg text-slate-400 dark:text-gray-600 hover:text-purple-400 hover:bg-purple-400/10 opacity-0 group-hover:opacity-100 transition-all"
+                      title="AI Explanation"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   {entry.romaji && (
                     <button
                       onClick={() => handleSpeak(entry.romaji!)}
@@ -161,6 +203,46 @@ export default function WordVaultPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* AI Explanation Modal */}
+      {selectedWord && (
+        <Modal
+          open={true}
+          onClose={closeExplanationModal}
+          title="AI Explanation"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-gray-800 rounded-lg p-4">
+              <Sparkles className="h-5 w-5 text-purple-500 shrink-0" />
+              <p className="font-mono text-lg text-slate-900 dark:text-gray-100">
+                {selectedWord}
+              </p>
+            </div>
+
+            {isExplaining ? (
+              <div className="flex items-center justify-center py-8">
+                <LoadingSpinner size="md" />
+                <span className="ml-3 text-sm text-gray-500">Generating explanation...</span>
+              </div>
+            ) : aiExplanation ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                  {aiExplanation}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={closeExplanationModal}
+                className="px-4 py-2 bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300 rounded-lg hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
