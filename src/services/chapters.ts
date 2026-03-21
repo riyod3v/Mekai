@@ -48,22 +48,21 @@ async function uploadChapterCbz(
 
   const { data, error: dbErr } = await supabase
     .from('chapters')
-    .insert({
-      manga_id: mangaId,
-      chapter_number: chapterNum,
-      title: title.trim() || null,
-      cbz_url: publicUrl,
-      owner_id: user.id,
-    })
+    .upsert(
+      {
+        manga_id: mangaId,
+        chapter_number: chapterNum,
+        title: title.trim() || null,
+        cbz_url: publicUrl,
+        owner_id: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'manga_id,chapter_number' }
+    )
     .select()
     .single();
 
-  if (dbErr) {
-    if (dbErr.code === '23505') {
-      throw new Error(`Chapter ${chapterNum} already exists. Use Edit/Replace instead.`);
-    }
-    throw dbErr;
-  }
+  if (dbErr) throw dbErr;
   return data as Chapter;
 }
 
