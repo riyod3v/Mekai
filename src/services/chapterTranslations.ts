@@ -1,8 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { ChapterTranslationRow, UpsertChapterTranslationInput } from '@/types';
 
-// ─── Queries ─────────────────────────────────────────────────
-
 /**
  * Fetch all published translations for a chapter.
  * Visibility is enforced by RLS (shared manga → any auth user, private → owner only).
@@ -21,8 +19,6 @@ export async function fetchChapterTranslations(
   if (error) throw new Error(error.message);
   return data as ChapterTranslationRow[];
 }
-
-// ─── Mutations ────────────────────────────────────────────────
 
 /**
  * Upsert a published translation.

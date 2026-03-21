@@ -11,17 +11,11 @@
 
 import { logger } from '@/lib/utils/logger';
 
-// ─── Configuration ────────────────────────────────────────────
-
 const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined;
 const MODEL = (import.meta.env.VITE_OPENROUTER_MODEL as string | undefined) ?? 'meta-llama/llama-3-8b-instruct';
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// ─── In-memory cache ──────────────────────────────────────────
-
 const _explanationCache = new Map<string, string>();
-
-// ─── Helper ───────────────────────────────────────────────────
 
 /**
  * Call OpenRouter chat completion API with the given messages.
@@ -63,8 +57,6 @@ async function callOpenRouter(messages: Array<{ role: string; content: string }>
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────
-
 /**
  * Generate an AI explanation for a Japanese sentence.
  * 
@@ -79,7 +71,6 @@ export async function explainJapaneseSentence(text: string): Promise<string> {
     throw new Error('No text provided for explanation');
   }
 
-  // Check cache first
   const cached = _explanationCache.get(text);
   if (cached) {
     logger.info('[OpenRouter] Using cached explanation for:', text);
@@ -101,7 +92,6 @@ export async function explainJapaneseSentence(text: string): Promise<string> {
 
   const explanation = await callOpenRouter(messages);
   
-  // Cache the result
   _explanationCache.set(text, explanation);
   
   return explanation;

@@ -1,8 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/types';
 
-// ─── Queries ────────────────────────────────────────────────
-
 /** Fetch the currently signed-in user's profile. */
 export async function getMyProfile(): Promise<Profile> {
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
@@ -18,8 +16,6 @@ export async function getMyProfile(): Promise<Profile> {
   // Attach email from auth.users (not stored in profiles table)
   return { ...(data as Profile), email: user.email };
 }
-
-// ─── Mutations ───────────────────────────────────────────────
 
 /** Update the current user's profile. Only writable fields accepted. */
 export async function updateMyProfile(

@@ -1,7 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 
-// ─── Types ────────────────────────────────────────────────────
-
 export type NotificationType = 'success' | 'error' | 'info' | 'warn' | 'loading';
 
 export interface Notification {
@@ -30,8 +28,6 @@ interface NotificationContextValue {
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
-
-// ─── Provider ─────────────────────────────────────────────────
 
 let _counter = 0;
 function uid(): string {
@@ -114,8 +110,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     </NotificationContext.Provider>
   );
 }
-
-// ─── Hook ─────────────────────────────────────────────────────
 
 export function useNotification(): NotificationContextValue {
   const ctx = useContext(NotificationContext);

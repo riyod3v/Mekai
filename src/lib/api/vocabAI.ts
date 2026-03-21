@@ -13,11 +13,7 @@ const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined;
 const MODEL = (import.meta.env.VITE_OPENROUTER_MODEL as string | undefined) ?? 'mistralai/mistral-7b-instruct';
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// ─── In-memory cache ──────────────────────────────────────────
-
 const _vocabCache = new Map<string, string>();
-
-// ─── Helper ───────────────────────────────────────────────────
 
 async function callOpenRouter(messages: Array<{ role: string; content: string }>): Promise<string> {
   if (!API_KEY) {
@@ -56,8 +52,6 @@ async function callOpenRouter(messages: Array<{ role: string; content: string }>
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────
-
 /**
  * Generate a comprehensive explanation for a Japanese word.
  * 
@@ -72,7 +66,6 @@ export async function generateWordExplanation(word: string): Promise<string> {
     throw new Error('No word provided for explanation');
   }
 
-  // Check cache first
   const cached = _vocabCache.get(word);
   if (cached) {
     logger.info('[VocabAI] Using cached explanation for:', word);
@@ -100,7 +93,6 @@ Word: ${word}`,
 
   const explanation = await callOpenRouter(messages);
   
-  // Cache the result
   _vocabCache.set(word, explanation);
   
   return explanation;

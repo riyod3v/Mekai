@@ -5,8 +5,6 @@ import { supabase } from '@/lib/supabase';
 import { getMyProfile, updateMyProfile } from '@/services/profiles';
 import type { Profile } from '@/types';
 
-// ─── helpers ────────────────────────────────────────────────
-
 const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
 
 /** Allowlist for avatar uploads — SVG/HTML excluded to prevent stored XSS. */
@@ -28,8 +26,6 @@ function getPwIssues(pw: string): PwIssue[] {
     { label: 'Special character (!@#$…)', ok: /[^A-Za-z0-9]/.test(pw) },
   ];
 }
-
-// ─── Eye-toggle input ────────────────────────────────────────
 
 function PasswordInput({
   id,
@@ -92,12 +88,9 @@ function PasswordInput({
   );
 }
 
-// ─── Page ────────────────────────────────────────────────────
-
 export default function SettingsPage() {
   const navigate = useNavigate();
 
-  // ── Profile ─────────────────────────────────────────────
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -135,7 +128,6 @@ export default function SettingsPage() {
     }
   }
 
-  // ── Avatar upload ─────────────────────────────────────────
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -156,7 +148,6 @@ export default function SettingsPage() {
         .upload(path, file, { upsert: true });
       if (uploadErr) throw new Error(uploadErr.message);
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-      // Cache-bust so the browser fetches the new image even though the path is the same
       const bustUrl = `${publicUrl}?t=${Date.now()}`;
       const updated = await updateMyProfile({ avatar_url: bustUrl });
       setProfile(updated);
@@ -184,7 +175,6 @@ export default function SettingsPage() {
     }
   }
 
-  // ── Change Password ──────────────────────────────────────
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw]         = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -207,7 +197,6 @@ export default function SettingsPage() {
 
     setSavingPw(true);
     try {
-      // Re-authenticate with current password
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.email) throw new Error('No email on account.');
 
@@ -220,7 +209,6 @@ export default function SettingsPage() {
         return;
       }
 
-      // Update to new password
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPw });
       if (updateErr) throw new Error(updateErr.message);
 
@@ -233,8 +221,6 @@ export default function SettingsPage() {
       setSavingPw(false);
     }
   }
-
-  // ── Render ───────────────────────────────────────────────
 
   const newPwIssues = getPwIssues(newPw);
 

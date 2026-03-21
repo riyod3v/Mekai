@@ -9,8 +9,6 @@
  * PaddleOCR's Japanese model expects standard colour input.
  */
 
-// ─── Types ────────────────────────────────────────────────────
-
 /** Normalised bounding box — all values are fractions of image dimensions (0..1). */
 export type BBox = {
   x: number;
@@ -19,15 +17,11 @@ export type BBox = {
   h: number;
 };
 
-// ─── Constants ────────────────────────────────────────────────
-
 /** Upscale factor applied to the cropped region before OCR.
  *  2× gives PaddleOCR enough resolution while keeping file size reasonable.
  *  The server further upscales tiny crops (< 96px min side) so 2× avoids
  *  a wasteful double-resize that degrades quality. */
 const UPSCALE = 2;
-
-// ─── Helpers ─────────────────────────────────────────────────
 
 /** Padding fraction (~8%) added around the bounding box to avoid tight crops.
  *  Kept modest so narrow vertical bubbles don't get excessive non-text area. */
@@ -41,7 +35,6 @@ const CROP_PADDING = 0.08;
 function cropToCanvas(imgEl: HTMLImageElement, bbox: BBox): HTMLCanvasElement {
   const { naturalWidth: nw, naturalHeight: nh } = imgEl;
 
-  // Apply padding around the bounding box
   const padW = bbox.w * CROP_PADDING;
   const padH = bbox.h * CROP_PADDING;
   const padX = Math.max(bbox.x - padW, 0);
@@ -96,7 +89,6 @@ function preprocessCanvasForManga(canvas: HTMLCanvasElement): void {
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
 
-  // 1) Grayscale + gather histogram
   const hist = new Array<number>(256).fill(0);
   const gray = new Uint8Array(w * h);
 
@@ -106,7 +98,6 @@ function preprocessCanvasForManga(canvas: HTMLCanvasElement): void {
     hist[g]++;
   }
 
-  // 2) Otsu threshold (fast enough for small crops)
   const total = w * h;
   let sum = 0;
   for (let t = 0; t < 256; t++) sum += t * hist[t];
@@ -135,7 +126,6 @@ function preprocessCanvasForManga(canvas: HTMLCanvasElement): void {
     }
   }
 
-  // 3) Decide if we should invert (dark background case)
   let darkCount = 0;
   for (let p = 0; p < gray.length; p++) {
     if (gray[p] < threshold) darkCount++;
@@ -143,7 +133,6 @@ function preprocessCanvasForManga(canvas: HTMLCanvasElement): void {
   const darkRatio = darkCount / gray.length;
   const invert = darkRatio > 0.55; // if mostly dark, invert so text stays black
 
-  // 4) Apply binarization (+ optional inversion)
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     const isDark = gray[p] < threshold;
     const bit = invert ? !isDark : isDark;
@@ -194,7 +183,6 @@ function labelComponents(
       const x = idx % w;
       const y = (idx - x) / w;
 
-      // 4-connected neighbours
       if (y > 0     && mask[idx - w] === 1 && labels[idx - w] === 0) { labels[idx - w] = id; stack.push(idx - w); }
       if (y < h - 1 && mask[idx + w] === 1 && labels[idx + w] === 0) { labels[idx + w] = id; stack.push(idx + w); }
       if (x > 0     && mask[idx - 1] === 1 && labels[idx - 1] === 0) { labels[idx - 1] = id; stack.push(idx - 1); }
@@ -204,8 +192,6 @@ function labelComponents(
 
   return { labels, sizes };
 }
-
-// ─── Public helpers ──────────────────────────────────────────
 
 /**
  * Quick pre-flight check: returns `false` when the selected region almost
@@ -288,7 +274,6 @@ export function cropToDataUrl(imgEl: HTMLImageElement, bbox: BBox): string {
 export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | null {
   const canvas = cropToCanvas(imgEl, bbox);
 
-  // ── Create binarised analysis copy ──
   const analysis = document.createElement('canvas');
   analysis.width = canvas.width;
   analysis.height = canvas.height;
@@ -298,7 +283,6 @@ export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | n
   aCtx.drawImage(canvas, 0, 0);
   preprocessCanvasForManga(analysis);
 
-  // ── Check for ink content (same thresholds as hasInkContent) ──
   const { width: w, height: h } = analysis;
   const { data: d } = aCtx.getImageData(0, 0, w, h);
   const total = w * h;
@@ -321,13 +305,11 @@ export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | n
     }
   }
 
-  // No significant ink → skip OCR
   if (inkCount / total < 0.003) return null;
   if (maxX < 0) return null;
   const rawBboxArea = (maxX - minX + 1) * (maxY - minY + 1);
   if (rawBboxArea / total < 0.008) return null;
 
-  // ── Connected-component filtering to find tight text bounds ──
   const MIN_COMPONENT_REL = 0.0001; // 0.01% — drops isolated specks
   const MAX_COMPONENT_REL = 0.45;   // 45%   — generous: text in tight bubbles can be large
   const minPx = Math.max(Math.round(total * MIN_COMPONENT_REL), 5);
@@ -354,12 +336,10 @@ export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | n
     }
   }
 
-  // Fall back to raw ink bbox if filtering removed everything
   if (fMaxX < 0) {
     fMinX = minX; fMinY = minY; fMaxX = maxX; fMaxY = maxY;
   }
 
-  // 6% proportional padding
   const padX = Math.round(w * 0.06);
   const padY = Math.round(h * 0.06);
   const x0 = Math.max(fMinX - padX, 0);
@@ -369,12 +349,10 @@ export function prepareOcrImage(imgEl: HTMLImageElement, bbox: BBox): string | n
   const bw = x1 - x0 + 1;
   const bh = y1 - y0 + 1;
 
-  // If tight crop is essentially the full canvas, just send the original
   if (bw >= w && bh >= h) {
     return canvas.toDataURL('image/png');
   }
 
-  // ── Re-crop the ORIGINAL (non-binarised) canvas to the tight bounds ──
   const tight = document.createElement('canvas');
   tight.width = bw;
   tight.height = bh;

@@ -37,8 +37,6 @@ import type {
 } from '@/types';
 import { regionHash } from '@/types';
 
-// ─── Types ────────────────────────────────────────────────────
-
 /** Lightweight OCR-in-progress state (one at a time). */
 interface OcrState {
   pageIndex: number;
@@ -65,8 +63,6 @@ interface Overlay {
   /** Which translation provider produced translated (undefined for DB rows) */
   translationProvider?: 'py-mekai-api';
 }
-
-// ─── Helpers ─────────────────────────────────────────────────
 
 const IMAGE_EXTS = /\.(jpe?g|png|gif|webp|avif)$/i;
 
@@ -116,8 +112,6 @@ function regionsOverlap(a: RegionBox, b: RegionBox, threshold = 0.3): boolean {
   const smaller = Math.min(a.w * a.h, b.w * b.h);
   return smaller > 0 && intersection / smaller >= threshold;
 }
-
-// ─── Per-page sub-component ───────────────────────────────────
 
 interface PageItemProps {
   src: string;
@@ -234,8 +228,6 @@ function ReaderPageItem({
   );
 }
 
-// ─── Main component ───────────────────────────────────────────
-
 export default function MangaReaderPage() {
   const queryClient = useQueryClient();
   const { chapterId } = useParams<{ chapterId: string }>();
@@ -243,13 +235,11 @@ export default function MangaReaderPage() {
   const { user } = useAuth();
   const { isTranslator, isReader } = useRole();
 
-  // ── CBZ state ──────────────────────────────────────────────
   const [images, setImages] = useState<string[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const prevUrls = useRef<string[]>([]);
 
-  // ── Reading mode ──────────────────────────────
   const [readingMode, setReadingMode] = useState<ReadingMode>(() =>
     (localStorage.getItem('mekai-reading-mode') as ReadingMode) ?? 'scroll'
   );
@@ -277,13 +267,11 @@ export default function MangaReaderPage() {
     setSwiperInstance(null);
   }
 
-  // ── Reading direction (RTL = manga-style, LTR = western-style) ───
   const [readingDirection, setReadingDirection] = useState<'rtl' | 'ltr'>(() =>
     (localStorage.getItem('mekai-reading-direction') as 'rtl' | 'ltr') ?? 'rtl'
   );
   const [readingSubmenuOpen, setReadingSubmenuOpen] = useState(false);
 
-  // ── Swiper + UI-overlay state ───────────────────────────────
   const [swiperInstance, setSwiperInstance] = useState<SwiperType | null>(null);
   const swiperRef = useRef<SwiperType | null>(null);
   const [uiVisible, setUiVisible] = useState(true);
@@ -295,7 +283,6 @@ export default function MangaReaderPage() {
     }
   }, [currentPage, swiperInstance]);
 
-  // ── OCR + history state ────────────────────────────────────
   const [selectionMode, setSelectionMode] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [ocr, setOcr] = useState<OcrState | null>(null);
@@ -315,12 +302,10 @@ export default function MangaReaderPage() {
   const deleteHistory = useDeleteTranslationHistory(chapterId ?? '');
   const notify = useNotification();
 
-  // ── Sync user overlays from persisted history ─────────────
   useEffect(() => {
     if (historyRows) setUserOverlays(historyRows.map(historyRowToOverlay));
   }, [historyRows]);
 
-  // ── Chapter queries ────────────────────────────────────────
   const {
     data: chapter,
     isLoading: chapterLoading,
@@ -342,7 +327,6 @@ export default function MangaReaderPage() {
   const nextChapter =
     currentIdx >= 0 && currentIdx < siblings.length - 1 ? siblings[currentIdx + 1] : null;
 
-  // ── Fetch manga to determine visibility ──────────────────
   const { data: manga } = useQuery({
     queryKey: ['manga', chapter?.manga_id],
     enabled: !!chapter?.manga_id,
@@ -359,7 +343,6 @@ export default function MangaReaderPage() {
   // Only the chapter owner can edit published translations (other translators see them as read-only)
   const isChapterOwner = !!(user && chapter && chapter.owner_id === user.id);
 
-  // ── Fetch published translations ──────────────────────────
   const { data: publishedRows } = useQuery({
     queryKey: ['chapter_translations', chapterId],
     enabled: !!chapterId,
@@ -372,7 +355,6 @@ export default function MangaReaderPage() {
     [publishedRows],
   );
 
-  // ── Merge overlays: published + user (dedup by key) ───────
   const mergedOverlays = useMemo(() => {
     const map = new Map<string, Overlay>();
     // Published first (lower priority)
@@ -382,7 +364,6 @@ export default function MangaReaderPage() {
     return Array.from(map.values());
   }, [publishedOverlays, userOverlays]);
 
-  // ── Extract CBZ ────────────────────────────────────────────
   useEffect(() => {
     if (!chapter?.cbz_url) return;
 
@@ -438,7 +419,6 @@ export default function MangaReaderPage() {
     };
   }, [chapter?.cbz_url, chapter?.id]);
 
-  // ── Reading progress: restore on chapter load ─────────────
   useEffect(() => {
     if (!chapterId || images.length === 0 || initialProgressApplied.current) return;
     initialProgressApplied.current = true;
@@ -465,7 +445,6 @@ export default function MangaReaderPage() {
     })();
   }, [chapterId, images.length, readingMode]);
 
-  // ── Reading progress: save on page change (page mode) ─────
   const progressDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -479,7 +458,6 @@ export default function MangaReaderPage() {
     };
   }, [currentPage, readingMode, chapterId, images.length]);
 
-  // ── Reading progress: IntersectionObserver for scroll mode ─
   useEffect(() => {
     if (readingMode !== 'scroll' || !chapterId || images.length === 0) return;
 
@@ -517,7 +495,6 @@ export default function MangaReaderPage() {
     };
   }, [readingMode, chapterId, images.length]);
 
-  // ── OCR selection handler (fully automatic pipeline) ──────
   const handlePageSelect = useCallback(
   async (pageIndex: number, sel: SelectionRect, imgEl: HTMLImageElement) => {
     if (!chapter) return;
@@ -594,12 +571,10 @@ export default function MangaReaderPage() {
   [chapter, addHistory, canPublishTranslations, queryClient, chapterId, mergedOverlays, notify]
 );
 
-  // ── Image ref handler ─────────────────────────────────────────
   const handleImageRef = useCallback((pageIndex: number, ref: HTMLImageElement | null) => {
     imageRefs.current[pageIndex] = ref;
   }, []);
 
-  // ── Dismiss overlay + delete from DB ──────────────────────
   const handleDismissOverlay = useCallback(
     async (id: string) => {
       // Find the overlay to determine its source
@@ -643,7 +618,6 @@ export default function MangaReaderPage() {
     [mergedOverlays, publishedOverlays, deleteHistory, chapterId, queryClient, notify, isChapterOwner],
   );
 
-  // ── Save overlay to word vault ─────────────────────────────
   const handleSaveToVault = useCallback(
     async (overlayId: string) => {
       const ov = mergedOverlays.find((o) => o.id === overlayId);
@@ -675,7 +649,6 @@ export default function MangaReaderPage() {
   // Only readers can bookmark to Word Vault - translators don't get the bookmark button
   const bookmarkHandler = isTranslator ? undefined : handleSaveToVault;
 
-  // ── Keyboard navigation (page mode only) ─────────────────
   useEffect(() => {
     if (readingMode !== 'page' || images.length === 0) return;
     function onKey(e: KeyboardEvent) {
@@ -700,7 +673,6 @@ export default function MangaReaderPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [readingMode, images.length, selectionMode]);
 
-  // ── History highlight ──────────────────────────────────────
   const handleHighlight = useCallback((entry: TranslationHistoryRow) => {
     if (readingMode === 'page') {
       // Switch to the right page, then highlight after render tick
@@ -721,7 +693,6 @@ export default function MangaReaderPage() {
     }
   }, [readingMode]);
 
-  // ── Toggle selection mode (disabled for read-only viewers) ─
   function toggleSelectionMode() {
     if (isReadOnlyViewer) return;
     setSelectionMode((v) => {
@@ -729,8 +700,6 @@ export default function MangaReaderPage() {
       return !v;
     });
   }
-
-  // ── Render ─────────────────────────────────────────────────
 
   if (chapterLoading) {
     return (

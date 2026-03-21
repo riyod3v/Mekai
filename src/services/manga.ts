@@ -2,8 +2,6 @@ import { supabase } from '@/lib/supabase';
 import type { Manga, MangaFormData } from '@/types';
 import { uploadMangaCover } from '@/services/storageCovers';
 
-// ─── Queries ────────────────────────────────────────────────
-
 /** Normalise the Supabase count-join shape into chapter_count */
 function normalise(row: Record<string, unknown>): Manga {
   const raw = row as unknown as Manga & { chapters?: { count: number }[] };
@@ -60,13 +58,10 @@ export async function fetchMangaByOwner(ownerId: string): Promise<Manga[]> {
   return (data as Record<string, unknown>[]).map(normalise);
 }
 
-// ─── Mutations ───────────────────────────────────────────────
-
 export async function createManga(
   formData: MangaFormData,
   ownerId: string
 ): Promise<Manga> {
-  // 1) Insert with cover_url=null first so we have the manga id
   const { data: inserted, error: insertErr } = await supabase
     .from('manga')
     .insert({
@@ -82,7 +77,6 @@ export async function createManga(
   if (insertErr) throw new Error(insertErr.message);
   const manga = inserted as Manga;
 
-  // 2) If a cover was supplied, upload to proper path and update the row
   if (formData.cover) {
     const publicUrl = await uploadMangaCover({
       userId: ownerId,

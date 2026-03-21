@@ -10,8 +10,6 @@ import clsx from 'clsx';
 import logoDark from '@/assets/IMG/branding/mekai-logo-dark.svg';
 import logoLight from '@/assets/IMG/branding/mekai-logo-light.svg';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function sanitizeText(v: string) {
   return v.replace(/\s+/g, ' ').trim();
 }
@@ -33,11 +31,8 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// SecurityError Messages
 function friendlyAuthError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  // Supabase AuthApiError also exposes a machine-readable `.code` field
-  // (e.g. "email_not_confirmed", "invalid_credentials") in v2.x SDK.
   const code = (err != null && typeof err === 'object' && 'code' in err)
     ? String((err as { code: unknown }).code).toLowerCase()
     : '';
@@ -72,8 +67,6 @@ function friendlyAuthError(err: unknown): string {
     return 'New registrations are currently disabled. Contact support.';
   return 'Something went wrong. Please try again.';
 }
-
-// ─── Auth Page ────────────────────────────────────────────────────────────────
 
 type Tab = 'login' | 'signup';
 

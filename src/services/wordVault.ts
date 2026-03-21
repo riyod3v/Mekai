@@ -2,8 +2,6 @@ import { supabase } from '@/lib/supabase';
 import type { WordVaultEntry, CreateWordVaultInput } from '@/types';
 import { logger } from '@/lib/utils/logger';
 
-// ─── Queries ─────────────────────────────────────────────────
-
 /** Fetch the signed-in user's word vault, newest first. */
 export async function fetchWordVault(): Promise<WordVaultEntry[]> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -19,14 +17,11 @@ export async function fetchWordVault(): Promise<WordVaultEntry[]> {
   return data as WordVaultEntry[];
 }
 
-// ─── Mutations ────────────────────────────────────────────────
-
 /** Add an entry to the signed-in user's word vault. */
 export async function addToWordVault(input: CreateWordVaultInput): Promise<WordVaultEntry> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated.');
 
-  // ─── Validation ────────────────────────────────────────────────
   if (!input.original?.trim()) {
     throw new Error('Original text is required and cannot be empty');
   }
@@ -45,7 +40,6 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     }
   }
 
-  // ─── Build payload ─────────────────────────────────────────────
   const payload = {
     user_id: user.id,
     chapter_id: input.chapter_id ?? null,
@@ -57,7 +51,6 @@ export async function addToWordVault(input: CreateWordVaultInput): Promise<WordV
     romaji: input.romaji?.trim() || null,
   };
 
-  // ─── Insert ──────────────────────────────────────────────────────
   const { data, error } = await supabase
     .from('word_vault')
     .insert(payload)

@@ -17,13 +17,9 @@ export interface AddHistoryParams {
   romaji?: string | null;
 }
 
-// ─── Query key factory ────────────────────────────────────────
-
 export const historyKeys = {
   byChapter: (chapterId: string) => ['translation_history', chapterId] as const,
 };
-
-// ─── Hooks ───────────────────────────────────────────────────
 
 /**
  * Fetch translation history for a chapter (newest first).

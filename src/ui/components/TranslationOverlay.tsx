@@ -27,8 +27,6 @@ interface Props {
   onSaveToVault?: (id: string) => void;
 }
 
-// ─── Canvas text-fit helpers ──────────────────────────────────
-
 const FONT_FAMILY = '"Segoe UI", "Arial", "Helvetica", sans-serif';
 const TEXT_COLOR  = '#111';
 
@@ -145,8 +143,6 @@ function drawFittedText(canvas: HTMLCanvasElement, text: string): void {
 
   ctx.restore();
 }
-
-// ─── Details Bottom Sheet (portalled to body) ─────────────────
 
 interface DetailsSheetProps {
   ocrText?: string;
@@ -445,8 +441,6 @@ function DetailsSheet({
     document.body,
   );
 }
-
-// ─── Component ────────────────────────────────────────────────
 
 export function TranslationOverlay({
   id, region, translated, ocrText,

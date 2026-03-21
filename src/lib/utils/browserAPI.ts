@@ -1,19 +1,12 @@
-// src/lib/utils/browserAPI.ts
 import { type BBox, prepareOcrImage } from '@/lib/ocr/ocr';
 import { translateJapaneseToEnglishWithProvider } from '@/lib/translate/translate';
 import { toRomaji } from '@/lib/translate/romaji';
 import { isMangaOcrAvailable, localMangaOcr } from '@/lib/api/manga-ocr-py-API';
 import type { TranslationProvider } from '@/lib/translate/translate';
 
-// ─── OCR request lock ────────────────────────────────────────
-// Prevents concurrent OCR requests from flooding Railway's 512 MB container.
-// Only one OCR+translate pipeline may run at a time; subsequent calls are
-// rejected immediately so the UI can show "busy" feedback.
 let _ocrRunning = false;
 const _OCR_COOLDOWN_MS = 1_000;
 let _lastOcrFinished = 0;
-
-// ─── Public types ─────────────────────────────────────────────
 
 export type OcrTranslateResult = {
   ocrText: string;
@@ -24,8 +17,6 @@ export type OcrTranslateResult = {
   /** Which translation provider produced the translation. */
   translationProvider: TranslationProvider;
 };
-
-// ─── Public API ───────────────────────────────────────────────
 
 /**
  * Run OCR on a selected region of a manga page, then translate and
@@ -46,27 +37,22 @@ export async function ocrAndTranslate(
     ocrText: '', translated: '', romaji: null, ocrSource, translationProvider: 'py-mekai-api',
   };
 
-  // ── Request lock: reject if another OCR is already in flight ──
   if (_ocrRunning) {
     console.warn('[mekai] OCR request skipped — another is still running');
     return emptyResult;
   }
 
-  // ── Cooldown: enforce minimum gap between requests ──
   const sinceLastOcr = Date.now() - _lastOcrFinished;
   if (sinceLastOcr < _OCR_COOLDOWN_MS) {
     console.warn('[mekai] OCR request skipped — cooldown active');
     return emptyResult;
   }
 
-  // Pre-flight: crop, detect ink, and tighten to text bounds in one pass.
-  // Returns null if no detectable text in the selected region.
   const base64 = prepareOcrImage(imgEl, bbox);
   if (!base64) {
     return emptyResult;
   }
 
-  // manga-ocr via py-mekai-api server (local in dev, Railway in prod)
   if (!(await isMangaOcrAvailable())) {
     const isLocal =
       typeof window !== 'undefined' &&

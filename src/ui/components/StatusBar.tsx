@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, Info, AlertTriangle, Loader2, X } from 'lucide-react';
 import { useNotification, type Notification, type NotificationType } from '@/context/NotificationContext';
 
-// ─── Style map ────────────────────────────────────────────────
-
 const STYLE: Record<NotificationType, { bg: string; icon: React.ReactNode; border: string }> = {
   success: {
     bg: 'bg-emerald-950/90',
@@ -31,8 +29,6 @@ const STYLE: Record<NotificationType, { bg: string; icon: React.ReactNode; borde
     icon: <Loader2 className="h-4 w-4 text-indigo-400 shrink-0 animate-spin" />,
   },
 };
-
-// ─── Single notification banner ───────────────────────────────
 
 function StatusBanner({ n, onDismiss }: { n: Notification; onDismiss: () => void }) {
   const [visible, setVisible] = useState(false);
@@ -69,8 +65,6 @@ function StatusBanner({ n, onDismiss }: { n: Notification; onDismiss: () => void
     </div>
   );
 }
-
-// ─── StatusBar (renders all active notifications) ─────────────
 
 export function StatusBar() {
   const { notifications, dismiss } = useNotification();

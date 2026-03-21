@@ -13,8 +13,6 @@
  * before any fallback logic can execute.
  */
 
-// ─── Configuration ────────────────────────────────────────────
-
 const _isLocal =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' ||
@@ -31,8 +29,6 @@ const BASE_API_URL: string = _isLocal
  *  Raised to 8 s so a localhost cold-start (model loading) doesn't falsely
  *  report the server as unavailable after just 3 s. */
 const PROBE_TIMEOUT_MS = 8_000;
-
-// ─── Health check (with TTL cache) ───────────────────────────
 
 /** Cache probe results for 30 s to avoid 2 extra HTTP round-trips per OCR click. */
 const _probeCache = new Map<string, { ok: boolean; ts: number }>();
@@ -60,8 +56,6 @@ async function isServiceAvailable(path: string): Promise<boolean> {
     return false;
   }
 }
-
-// ─── Manga-OCR ───────────────────────────────────────────────
 
 /**
  * Returns `true` when the manga-ocr endpoint is reachable.
@@ -98,8 +92,6 @@ export async function localMangaOcr(imageBase64: string): Promise<string> {
   const json = (await res.json()) as { text: string };
   return (json.text ?? '').trim();
 }
-
-// ─── Translation (OPUS-MT) ───────────────────────────────────
 
 /**
  * Returns `true` when the translate endpoint is reachable

@@ -2,8 +2,6 @@ import { supabase } from '@/lib/supabase';
 import type { ReadingProgressRow } from '@/types';
 import { logger } from '@/lib/utils/logger';
 
-// ─── Queries ─────────────────────────────────────────────────
-
 /** Fetch reading progress for the signed-in user on a given chapter. */
 export async function fetchReadingProgress(
   chapterId: string,
@@ -21,8 +19,6 @@ export async function fetchReadingProgress(
   if (error) throw new Error(error.message);
   return data as ReadingProgressRow | null;
 }
-
-// ─── Mutations ────────────────────────────────────────────────
 
 /**
  * Upsert reading progress. Uses the composite PK (user_id, chapter_id)

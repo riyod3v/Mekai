@@ -26,9 +26,7 @@ const DYNAMIC_ALLOWED_PATTERNS: RegExp[] = [
  */
 export function isAllowedRedirectPath(path: unknown): path is string {
   if (!path || typeof path !== 'string') return false;
-  // Reject protocol-relative and absolute URLs
   if (!path.startsWith('/') || path.startsWith('//')) return false;
-  // Strip query string and hash for the allowlist lookup
   const clean = path.split('?')[0].split('#')[0];
   if (STATIC_ALLOWED_PATHS.has(clean)) return true;
   return DYNAMIC_ALLOWED_PATTERNS.some((p) => p.test(clean));

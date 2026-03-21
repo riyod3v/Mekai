@@ -1,8 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { TranslationHistoryRow, CreateTranslationHistoryInput } from '@/types';
 
-// ─── Queries ─────────────────────────────────────────────────
-
 /**
  * Fetch all translation history rows for a chapter belonging to the
  * signed-in user, newest first.
@@ -22,8 +20,6 @@ export async function fetchTranslationHistoryByChapter(
   if (error) throw new Error(error.message);
   return data as TranslationHistoryRow[];
 }
-
-// ─── Mutations ────────────────────────────────────────────────
 
 /** Insert a new translation history row for the signed-in user. */
 export async function createTranslationHistory(

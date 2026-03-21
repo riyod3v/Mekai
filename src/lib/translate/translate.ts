@@ -10,12 +10,8 @@ import {
   localTranslateJaToEn,
 } from '@/lib/api/manga-ocr-py-API';
 
-// ─── Public types ───────────────────────────────────────────
-
 /** Which translation provider produced the result. */
 export type TranslationProvider = 'py-mekai-api';
-
-// ─── Public API ─────────────────────────────────────────────
 
 /**
  * Translate a Japanese string to English via the local py-mekai-api server,

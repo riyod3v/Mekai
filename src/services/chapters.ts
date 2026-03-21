@@ -1,8 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Chapter, ChapterFormData } from '@/types';
 
-// ─── Queries ─────────────────────────────────────────────────
-
 /** Fetch all chapters for a manga, ordered by chapter number */
 export async function fetchChaptersByManga(mangaId: string): Promise<Chapter[]> {
   const { data, error } = await supabase
@@ -28,13 +26,6 @@ export async function fetchChapterById(id: string): Promise<Chapter> {
   return data as Chapter;
 }
 
-// ─── Mutations ────────────────────────────────────────────
-
-/**
- * Upload a .cbz file for a chapter.
- * Reads the current session user – no caller-supplied uploader ID.
- * Storage path: [owner_id]/[manga_id]/[chapter_number].cbz
- */
 async function uploadChapterCbz(
   file: File,
   mangaId: string,
@@ -44,21 +35,17 @@ async function uploadChapterCbz(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  // 1. Storage path
   const filePath = `${user.id}/${mangaId}/${chapterNum}.cbz`;
 
-  // 2. Upload to the 'chapters' storage bucket
   const { error: storageErr } = await supabase.storage
     .from('chapters')
     .upload(filePath, file, { upsert: true });
   if (storageErr) throw storageErr;
 
-  // 3. Get public URL
   const { data: { publicUrl } } = supabase.storage
     .from('chapters')
     .getPublicUrl(filePath);
 
-  // 4. Insert into chapters table (owner_id must match auth.uid() for RLS)
   const { data, error: dbErr } = await supabase
     .from('chapters')
     .insert({

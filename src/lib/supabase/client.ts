@@ -39,14 +39,10 @@ if (!isSupabaseConfigured) {
   );
 }
 
-// Project-scoped storage key prevents stale tokens from old/placeholder projects
-// from being picked up by this client instance.
 const PROJECT_REF = supabaseUrl
   ? new URL(supabaseUrl).hostname.split('.')[0]
   : 'unknown';
 
-// Run cleanup BEFORE createClient so the client never loads a stale token
-// into memory. Deletes any generic or foreign-project auth keys from localStorage.
 ;(() => {
   if (typeof localStorage === 'undefined') return;
   const staleKeys = ['sb-auth-token', 'supabase.auth.token'];
@@ -76,10 +72,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
   },
 });
-
-// ---------------------------------------------------------------------------
-// Storage helpers
-// ---------------------------------------------------------------------------
 
 export const BUCKETS = {
   COVERS: 'covers',

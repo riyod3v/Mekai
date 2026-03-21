@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────────────────────
-// Mekai – Shared TypeScript types
-// ─────────────────────────────────────────────────────────────
-
 export type Role = 'reader' | 'translator';
 
 export interface Profile {
@@ -58,8 +54,6 @@ export interface RegionBox {
   h: number;
 }
 
-// ─── Translation History (per-user private) ──────────────────
-
 /** Row shape returned from `public.translation_history`. */
 export interface TranslationHistoryRow {
   id: string;
@@ -86,8 +80,6 @@ export interface CreateTranslationHistoryInput {
   romaji?: string | null;
 }
 
-// ─── Chapter Translations (published, visible to readers) ────
-
 /** Row shape returned from `public.chapter_translations`. */
 export interface ChapterTranslationRow {
   id: string;
@@ -112,8 +104,6 @@ export interface UpsertChapterTranslationInput {
   translated: string;
   romaji?: string | null;
 }
-
-// ─── Word Vault (per-user bookmarks) ─────────────────────────
 
 export interface WordVaultEntry {
   id: string;
@@ -141,8 +131,6 @@ export interface CreateWordVaultInput {
 /** Alias for backward-compat */
 export type WordVaultRow = WordVaultEntry;
 
-// ─── Reading Progress ────────────────────────────────────────
-
 export interface ReadingProgressRow {
   user_id: string;
   chapter_id: string;
@@ -150,16 +138,12 @@ export interface ReadingProgressRow {
   updated_at: string;
 }
 
-// ─── OCR / Reader ────────────────────────────────────────────
-
 export type ReadingMode = 'page' | 'scroll';
 
 /** Compute a stable hash key for a region (used in chapter_translations unique constraint). */
 export function regionHash(r: RegionBox): string {
   return `${r.x.toFixed(4)}-${r.y.toFixed(4)}-${r.w.toFixed(4)}-${r.h.toFixed(4)}`;
 }
-
-// ─── Forms ───────────────────────────────────────────────────
 
 export interface MangaFormData {
   title: string;
