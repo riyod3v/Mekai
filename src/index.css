@@ -74,25 +74,26 @@
 
   /* Re-enable scrollbar inside the reader scroll container */
   .reader-scrollbar {
-    scrollbar-width: auto;
-    scrollbar-color: #6366f1 #e2e8f0; /* light: indigo thumb, slate-200 track */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
   }
   .dark .reader-scrollbar {
-    scrollbar-color: #6366f1 #1e293b; /* dark: indigo thumb, slate-800 track */
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
   }
-  .reader-scrollbar::-webkit-scrollbar { display: block; width: 10px; }
-  .reader-scrollbar::-webkit-scrollbar-track { background: #e2e8f0; }
-  .dark .reader-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+  .reader-scrollbar::-webkit-scrollbar { display: block; width: 6px; }
+  .reader-scrollbar::-webkit-scrollbar-track { background: transparent; }
   .reader-scrollbar::-webkit-scrollbar-thumb {
-    background-color: #6366f1;
+    background-color: rgba(148, 163, 184, 0.35);
     border-radius: 999px;
-    border: 2px solid #e2e8f0;
   }
   .dark .reader-scrollbar::-webkit-scrollbar-thumb {
-    border-color: #1e293b;
+    background-color: rgba(255, 255, 255, 0.15);
   }
   .reader-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: #818cf8;
+    background-color: rgba(148, 163, 184, 0.55);
+  }
+  .dark .reader-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
   }
 
   .animate-slide-up {

@@ -108,7 +108,7 @@ export default function SettingsPage() {
       })
       .catch(() => notify.error('Could not load profile.'))
       .finally(() => setProfileLoading(false));
-  }, []);
+  }, [notify]);
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();

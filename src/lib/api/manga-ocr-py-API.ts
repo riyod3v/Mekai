@@ -78,7 +78,7 @@ export async function localMangaOcr(imageBase64: string): Promise<string> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageBase64 }),
     });
-  } catch (err) {
+  } catch {
     // Network / CORS / DNS failure — the backend is likely down
     throw new Error(
       `Cannot reach OCR server at ${BASE_API_URL}. ` +
@@ -112,7 +112,7 @@ export async function localTranslateJaToEn(text: string): Promise<string> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ q: text, source: 'ja', target: 'en' }),
     });
-  } catch (err) {
+  } catch {
     throw new Error(
       `Cannot reach translation server at ${BASE_API_URL}. ` +
       `The server may be starting up or temporarily unavailable. Please try again in a moment.`

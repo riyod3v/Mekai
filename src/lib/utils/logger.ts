@@ -20,7 +20,6 @@ const IS_DEV = import.meta.env.DEV;
 
 function _log(level: 'log' | 'info' | 'warn' | 'error', ...args: unknown[]): void {
   if (!IS_DEV) return;
-  // eslint-disable-next-line no-console
   console[level](...args);
 }
 

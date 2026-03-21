@@ -134,7 +134,7 @@ interface PageItemProps {
 function ReaderPageItem({
   src, pageIndex, loading, selectionActive,
   onSelect, ocrState, onDismissOcr, overlays, highlightId,
-  onDismissOverlay, onSaveToVault, isChapterOwner, readOnly, onImageRef, fitPage,
+  onDismissOverlay, onSaveToVault, readOnly, onImageRef, fitPage,
 }: PageItemProps) {
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -746,7 +746,7 @@ export default function MangaReaderPage() {
           {readingMode === 'scroll' ? 'Scroll' : 'Page'} &middot; {readingDirection.toUpperCase()}
           {readingMode === 'page' && images.length > 0 && (
             <span className="ml-1.5 font-medium text-gray-400 dark:text-gray-500">
-              &middot; {currentPage + 1} / {images.length}
+              &middot; {currentPage + 1} / {images.length}
             </span>
           )}
         </p>

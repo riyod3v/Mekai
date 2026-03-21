@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/utils/logger';
-import { Vault, Trash2, Search, Volume2, Sparkles, X } from 'lucide-react';
+import { Vault, Trash2, Search, Volume2, Sparkles } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchWordVault, deleteFromWordVault } from '@/services/wordVault';

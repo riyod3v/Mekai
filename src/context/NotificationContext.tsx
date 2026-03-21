@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warn' | 'loading';
@@ -6,12 +7,10 @@ export interface Notification {
   id: string;
   type: NotificationType;
   message: string;
-  /** Auto-dismiss delay in ms. `0` = manual dismiss only. Default 4000. */
   duration: number;
 }
 
 interface NotifyOptions {
-  /** Override auto-dismiss duration (ms). 0 = sticky. Default 4000. */
   duration?: number;
 }
 
